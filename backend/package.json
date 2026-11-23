@@ -24,7 +24,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
-    "migrate": "psql \"$DATABASE_URL\" -f migrations/001_init.sql",
+    "migrate": "tsx scripts/migrate.ts",
     "seed": "tsx scripts/seed.ts",
     "start": "node dist/src/index.js",
     "test": "vitest run",
