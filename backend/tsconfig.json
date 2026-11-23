@@ -18,6 +18,7 @@
   ],
   "include": [
     "src",
-    "scripts/seed.ts"
+    "scripts/seed.ts",
+    "scripts/migrate.ts"
   ]
 }
