@@ -60,6 +60,30 @@ async function main() {
   const csv = await fetch(`${base}/api/employees/export?format=csv`);
   const csvText = await csv.text();
   console.log("GET export CSV:", csv.status, "lines:", csvText.split("\n").length, "header:", csvText.split("\n")[0]);
+  // CSV import: a mixed file (2 good + 1 bad salary + 1 duplicate of the
+  // first employee) must import only the good rows and report the rest.
+  const existingEmail = list.body.data[0].email as string;
+  const mixed = [
+    "id,firstName,lastName,email,department,country,currency,jobTitle,level,baseSalary,dateOfJoining",
+    ",Import,One,import.one@acme.com,Engineering,India,INR,Software Engineer,Senior,150000,2022-03-01",
+    ",Bad,Salary,bad.salary@acme.com,Engineering,India,INR,Engineer,Senior,abc,2022-03-01",
+    `,Copy,Existing,${existingEmail},Engineering,India,INR,Engineer,Senior,150000,2022-03-01`,
+    ",Import,Two,import.two@acme.com,Design,USA,USD,Designer,Mid,90000,2021-06-15",
+  ].join("\n");
+  const form = new FormData();
+  form.append("file", new Blob([mixed], { type: "text/csv" }), "import.csv");
+  const imp = await fetch(`${base}/api/employees/import`, { method: "POST", body: form });
+  const impBody = (await imp.json()) as Record<string, any>;
+  console.log("POST import CSV:", imp.status, JSON.stringify(impBody.data));
+  if (imp.status !== 200 || impBody.data?.imported !== 2 || impBody.data?.failed?.length !== 2) {
+    throw new Error(`import report wrong: ${JSON.stringify(impBody.data)}`);
+  }
+  if (impBody.data.failed.map((f: { row: number }) => f.row).join(",") !== "3,4") {
+    throw new Error(`import failed rows wrong: ${JSON.stringify(impBody.data.failed)}`);
+  }
+  const afterImport = await get("/api/employees?page=1&pageSize=1");
+  console.log("total after import:", afterImport.body.meta?.total);
+  if (afterImport.body.meta?.total !== 10_002) throw new Error(`total after import wrong: ${afterImport.body.meta?.total}`);
   server.close();
   await pool.end();
   console.log("verify-pgmem: ALL OK");

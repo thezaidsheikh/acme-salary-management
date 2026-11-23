@@ -20,6 +20,14 @@ export interface EmployeeRepository {
   getById(id: string): Promise<EmployeeWithHistory | null>;
   /** Insert an employee; rejects on a duplicate email (unique violation). */
   create(data: EmployeeCreateData): Promise<EmployeeRow>;
+  /** Emails from the list that already exist (CSV import duplicate check). */
+  existingEmails(emails: string[]): Promise<Set<string>>;
+  /**
+   * Insert many employees in ONE transaction; all or nothing — any
+   * failure (e.g. a duplicate email) rolls the whole batch back, so no
+   * partial silent state is ever left behind.
+   */
+  createMany(data: EmployeeCreateData[]): Promise<EmployeeRow[]>;
   /** Atomically set a salary and append a history row; null when id missing. */
   updateSalary(
     id: string,
@@ -84,6 +92,14 @@ const SORTABLE: Record<string, string> = {
   lastName: "last_name",
   dateOfJoining: "date_of_joining",
 };
+
+/**
+ * Minimal query surface shared by a Pool and a checked-out PoolClient,
+ * so one insert helper serves both single inserts and transactions.
+ */
+interface QueryExecutor {
+  query(text: string, params: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+}
 
 /**
  * Postgres implementation of EmployeeRepository — the only class that
@@ -165,14 +181,18 @@ export class PgEmployeeRepository implements EmployeeRepository {
   }
 
   /**
-   * Insert an employee. The database enforces the unique email; a
-   * duplicate surfaces as a Postgres unique-violation error, which the
-   * service maps to a 400.
+   * Insert one employee through a pool or a checked-out transaction
+   * client. Kept as a helper (rather than inlined in `create`) so the
+   * single-row INSERT lives beside `createMany`'s multi-row one.
+   * @param executor Pool (single insert) or client (inside a transaction).
    * @param data Employee fields (no id/timestamps/status).
    * @returns The inserted employee row.
    */
-  async create(data: EmployeeCreateData): Promise<EmployeeRow> {
-    const r = await this.pool.query(
+  private async insert(
+    executor: QueryExecutor,
+    data: EmployeeCreateData,
+  ): Promise<EmployeeRow> {
+    const r = await executor.query(
       `INSERT INTO employees (id, first_name, last_name, email, department, country, currency, job_title, level, manager_id, date_of_joining, base_salary)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING ${COLS}`,
       [
@@ -191,6 +211,75 @@ export class PgEmployeeRepository implements EmployeeRepository {
       ],
     );
     return mapEmployee(r.rows[0]);
+  }
+
+  /**
+   * Insert an employee. The database enforces the unique email; a
+   * duplicate surfaces as a Postgres unique-violation error, which the
+   * service maps to a 400.
+   * @param data Employee fields (no id/timestamps/status).
+   * @returns The inserted employee row.
+   */
+  async create(data: EmployeeCreateData): Promise<EmployeeRow> {
+    return this.insert(this.pool, data);
+  }
+
+  /**
+   * Which of the given emails already exist (one query, for the CSV
+   * import's duplicate check — the service reports those rows as failed
+   * instead of letting the insert crash). One `IN` placeholder per
+   * email: pg-mem does not resolve `= ANY($1)` over an array parameter.
+   * @param emails Emails to look up; empty list needs no query.
+   * @returns The subset that already exists.
+   */
+  async existingEmails(emails: string[]): Promise<Set<string>> {
+    if (emails.length === 0) return new Set();
+    const placeholders = emails.map((_, i) => `$${i + 1}`).join(",");
+    const r = await this.pool.query(
+      `SELECT email FROM employees WHERE email IN (${placeholders})`,
+      emails,
+    );
+    return new Set(r.rows.map((x) => x.email as string));
+  }
+
+  /**
+   * Insert many employees as ONE multi-row INSERT statement. A single
+   * statement runs in a single implicit transaction, so every row
+   * commits together or a failure anywhere (e.g. a duplicate email)
+   * inserts nothing — no partial silent state, and no explicit
+   * BEGIN/COMMIT round-trips.
+   * @param data Employees to insert; empty list inserts nothing.
+   * @returns The inserted rows.
+   */
+  async createMany(data: EmployeeCreateData[]): Promise<EmployeeRow[]> {
+    if (data.length === 0) return [];
+    const values: unknown[] = [];
+    const tuples = data
+      .map((d, j) => {
+        const o = j * 12;
+        values.push(
+          randomUUID(),
+          d.firstName,
+          d.lastName,
+          d.email,
+          d.department,
+          d.country,
+          d.currency,
+          d.jobTitle,
+          d.level,
+          d.managerId,
+          d.dateOfJoining,
+          d.baseSalary,
+        );
+        return `($${o + 1},$${o + 2},$${o + 3},$${o + 4},$${o + 5},$${o + 6},$${o + 7},$${o + 8},$${o + 9},$${o + 10},$${o + 11},$${o + 12})`;
+      })
+      .join(",");
+    const r = await this.pool.query(
+      `INSERT INTO employees (id, first_name, last_name, email, department, country, currency, job_title, level, manager_id, date_of_joining, base_salary)
+       VALUES ${tuples} RETURNING ${COLS}`,
+      values,
+    );
+    return r.rows.map(mapEmployee);
   }
 
   /**
@@ -348,6 +437,22 @@ export class InMemoryEmployeeRepository implements EmployeeRepository {
   }
 
   /**
+   * Build the stored row for new data (fresh id, Active status, now
+   * timestamps) — the same shape for `create` and `createMany`.
+   * @param data Employee fields (no id/timestamps/status).
+   * @returns The row to store.
+   */
+  private toRow(data: EmployeeCreateData): EmployeeRow {
+    return {
+      ...data,
+      id: `test-${this.employees.length + 1}`,
+      employmentStatus: "Active",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }
+
+  /**
    * Insert an employee, rejecting a duplicate email like Postgres does.
    * @param data Employee fields (no id/timestamps/status).
    * @returns The inserted employee row.
@@ -359,15 +464,49 @@ export class InMemoryEmployeeRepository implements EmployeeRepository {
         `duplicate key value violates unique constraint "employees_email_key"`,
       );
     }
-    const e: EmployeeRow = {
-      ...data,
-      id: `test-${this.employees.length + 1}`,
-      employmentStatus: "Active",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    const e = this.toRow(data);
     this.employees.push(e);
     return e;
+  }
+
+  /**
+   * Which of the given emails already exist (same contract as Pg).
+   * @param emails Emails to look up.
+   * @returns The subset that already exists.
+   */
+  async existingEmails(emails: string[]): Promise<Set<string>> {
+    const wanted = new Set(emails);
+    return new Set(
+      this.employees.filter((e) => wanted.has(e.email)).map((e) => e.email),
+    );
+  }
+
+  /**
+   * Insert many employees atomically: the whole batch is checked first,
+   * then inserted — a duplicate anywhere (against stored rows or inside
+   * the batch) inserts nothing, mirroring the Postgres transaction's
+   * rollback.
+   * @param data Employees to insert; empty list inserts nothing.
+   * @returns The inserted rows, in input order.
+   * @throws Error mentioning "unique" when any email already exists.
+   */
+  async createMany(data: EmployeeCreateData[]): Promise<EmployeeRow[]> {
+    const seen = new Set<string>();
+    for (const d of data) {
+      if (seen.has(d.email) || this.employees.some((e) => e.email === d.email)) {
+        throw new Error(
+          `duplicate key value violates unique constraint "employees_email_key"`,
+        );
+      }
+      seen.add(d.email);
+    }
+    const created: EmployeeRow[] = [];
+    for (const d of data) {
+      const e = this.toRow(d);
+      this.employees.push(e);
+      created.push(e);
+    }
+    return created;
   }
 
   /**

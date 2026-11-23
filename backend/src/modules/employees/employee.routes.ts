@@ -16,6 +16,7 @@ export function createEmployeeRouter(service: EmployeeService): ExpressRouter {
   router.get("/export", asyncHandler(c.exportCsv));
   router.get("/", asyncHandler(c.list));
   router.get("/:id", asyncHandler(c.getById));
+  router.post("/import", asyncHandler(c.importCsv));
   router.post("/", asyncHandler(c.create));
   return router;
 }

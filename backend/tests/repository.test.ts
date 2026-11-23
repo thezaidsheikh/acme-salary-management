@@ -97,4 +97,43 @@ describe("InMemoryEmployeeRepository", () => {
     expect(exported.every((e) => e.department === target.department)).toBe(true);
     expect((await repo.allForExport({})).length).toBe(50);
   });
+  it("existingEmails returns only the emails already stored", async () => {
+    const target = repo.employees[0];
+    expect(await repo.existingEmails([])).toEqual(new Set());
+    expect(await repo.existingEmails([target.email, "nobody@acme.com"])).toEqual(new Set([target.email]));
+    expect(await repo.existingEmails(["nobody@acme.com"])).toEqual(new Set());
+  });
+  it("createMany inserts the whole batch; empty batch inserts nothing", async () => {
+    const one = {
+      firstName: "Asha", lastName: "Patel", email: "asha.patel@acme.com", department: "Engineering",
+      country: "India", currency: "INR", jobTitle: "Engineer", level: "Senior",
+      managerId: null, dateOfJoining: new Date("2022-03-01"), baseSalary: 150000,
+    };
+    const created = await repo.createMany([
+      one,
+      { ...one, firstName: "Rohan", lastName: "Mehta", email: "rohan.mehta@acme.com" },
+    ]);
+    expect(created).toHaveLength(2);
+    expect(repo.employees).toHaveLength(52);
+    expect(await repo.createMany([])).toEqual([]);
+    expect(repo.employees).toHaveLength(52);
+  });
+  it("createMany inserts nothing when any row duplicates (stored or in-batch)", async () => {
+    const stored = repo.employees[0];
+    const one = {
+      firstName: "Asha", lastName: "Patel", email: "asha.patel@acme.com", department: "Engineering",
+      country: "India", currency: "INR", jobTitle: "Engineer", level: "Senior",
+      managerId: null, dateOfJoining: new Date("2022-03-01"), baseSalary: 150000,
+    };
+    await expect(repo.createMany([
+      one,
+      { ...one, firstName: "Dup", lastName: "Two", email: stored.email },
+    ])).rejects.toThrow(/unique/i);
+    expect(repo.employees).toHaveLength(50);
+    await expect(repo.createMany([
+      one,
+      { ...one, firstName: "Dup", lastName: "Two", email: "asha.patel@acme.com" },
+    ])).rejects.toThrow(/unique/i);
+    expect(repo.employees).toHaveLength(50);
+  });
 });

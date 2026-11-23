@@ -59,3 +59,20 @@ export type EmployeeWithBand = EmployeeRow & EmployeeBandInfo;
 
 /** An employee with history plus band info, as GET /api/employees/:id returns. */
 export type EmployeeDetail = EmployeeWithHistory & EmployeeBandInfo;
+
+/** One row the CSV import could not import: its file row number + why. */
+export interface ImportRowFailure {
+  row: number;
+  reason: string;
+}
+
+/**
+ * Per-row report of a CSV import: how many data rows the file held, how
+ * many were imported, and every failed row with its number and reason.
+ * `imported + failed.length` always equals `totalRows`.
+ */
+export interface ImportReport {
+  totalRows: number;
+  imported: number;
+  failed: ImportRowFailure[];
+}
