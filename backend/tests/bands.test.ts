@@ -5,6 +5,7 @@ import { applyMigrations } from "../scripts/migrate";
 import { memPool } from "./pgmem";
 import { createApp } from "../src/app";
 import { BandService, classifySalary } from "../src/modules/bands/bands.service";
+import { createBandsModule } from "../src/modules/bands/bands.factory";
 import {
   InMemoryBandRepository,
   PgBandRepository,
@@ -97,6 +98,23 @@ describe("BandService (in-memory repo)", () => {
       minSalary: 100,
       midSalary: 200,
       maxSalary: 300,
+    });
+  });
+});
+
+describe("createBandsModule (factory)", () => {
+  it("accepts a ready BandRepository and uses it as-is", async () => {
+    const { service, router } = createBandsModule(new InMemoryBandRepository());
+    expect(await service.getAll()).toHaveLength(6);
+    expect(router).toBeDefined();
+  });
+  it("builds an in-memory band service from an employee repository", async () => {
+    const { service } = createBandsModule(new InMemoryEmployeeRepository());
+    expect(await service.getByLevel("Senior")).toEqual({
+      level: "Senior",
+      minSalary: 4500,
+      midSalary: 6000,
+      maxSalary: 7500,
     });
   });
 });
