@@ -9,7 +9,7 @@ See `docs/REQUIREMENTS.md` first — it was written before any code.
 TypeScript + Tailwind CSS 3 (frontend). Tests: Vitest (+ Supertest,
 Testing Library) with v8 coverage.
 
-**Measured (23 Nov 2026):** backend 80/80 tests, 99.73% lines covered;
+**Measured (23 Nov 2026):** backend 90/90 tests, 99.74% lines covered;
 frontend 62/62 tests, 100% lines covered; seed exactly 10,000 employees
 in ~0.8 s. Full numbers in `docs/TESTING.md` and `docs/VERIFICATION.md`.
 
@@ -90,7 +90,7 @@ backend/src/
   modules/analytics/     # dashboard maths (pure computeAnalytics)
   seed/                  # deterministic 10,000-employee generator + factory
   ../migrations/001_init.sql
-  ../tests/              # 80 tests (Vitest + Supertest + pg-mem)
+  ../tests/              # 90 tests (Vitest + Supertest + pg-mem)
 frontend/src/
   app/                   # Next.js routes: /, /employees, /employees/new, /employees/[id]
   features/employees/    # typed API client + types (single source)
@@ -104,10 +104,27 @@ zaid-docs/              # gitignored — candidate's own short notes, never push
 ## Tests
 
 ```bash
-cd backend && npm test && npm run coverage    # 80 tests, 99.73% lines
+cd backend && npm test && npm run coverage    # 90 tests, 99.74% lines
 cd frontend && npm test && npm run coverage   # 62 tests, 100% lines
 cd backend && npx tsx scripts/verify-pgmem.ts # migration + 10k seed + HTTP smoke, no Postgres server
 ```
+
+## Troubleshooting
+
+**CORS error in the browser** (`Access to fetch at 'http://localhost:4000/…' from origin '…' has been blocked by CORS policy`)?
+The backend allows a list of origins (`backend/src/shared/cors.ts`):
+`FRONTEND_URL` from `backend/.env` (comma-separated) plus
+`http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:3001`
+and `http://127.0.0.1:3001`. Check three things:
+1. Open the frontend at `http://localhost:3000` — not `127.0.0.1`, and
+   not port `3001` unless you also set `FRONTEND_URL` to include it.
+2. `FRONTEND_URL` in `backend/.env` must have no trailing slash
+   (`http://localhost:3000`, not `http://localhost:3000/`).
+3. Restart the backend after editing `.env` — env vars are read at startup.
+
+**`psql: command not found` on `npm run migrate`?** Migrate no longer
+needs the `psql` CLI — it runs through the Node `pg` driver. Just
+`git pull` and run `npm run migrate` again.
 
 ## Docs for the reviewer
 
