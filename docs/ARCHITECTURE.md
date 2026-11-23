@@ -133,11 +133,10 @@ extraction is mechanical, not a rewrite:
 
 ## Deployment (phase 2)
 
-Backend: Render/Railway + managed Postgres (Neon). Frontend: Vercel,
-`NEXT_PUBLIC_API_URL` points at the backend. Locally:
-`docker compose up -d` for Postgres, or a local Postgres 16.
-Deployment + video demo are phase 2 — not done yet (see
-`docs/VERIFICATION.md`).
+Backend + Postgres on Render, frontend on Vercel — see the runbook
+`docs/DEPLOYMENT.md` and the Render Blueprint `render.yaml` at the
+repo root. Deployment + video demo are phase 2 — configs are ready,
+the live URLs are not created yet (see `docs/VERIFICATION.md`).
 
 ## Performance notes
 

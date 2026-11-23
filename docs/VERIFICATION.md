@@ -11,21 +11,21 @@ Re-checked 23 Nov 2026 for the new branch-per-feature repo (rebuilt from the ver
 | 2 | End-to-end backend + UI, fully functional | ✅ | Backend `backend/src/` + Next.js `frontend/src/app/`; smoke-tested below |
 | 3 | Backend: Node.js + relational DB | ✅ | Node 24 + TypeScript + Express; PostgreSQL 16 via `pg` + `backend/migrations/001_init.sql` |
 | 4 | UI: ReactJS or NextJS | ✅ | Next.js 14 (App Router) + React 18 + Tailwind 3, `frontend/` |
-| 5 | Seed script, exactly 10,000 employees | ✅ | `backend/scripts/seed.ts` + `backend/src/seed/`; measured: `SELECT COUNT(*)` = 10,000, 10,000 distinct emails, 0.7–0.9 s |
+| 5 | Seed script, exactly 10,000 employees | ✅ | `backend/scripts/seed.ts` + `backend/src/seed/`; measured: `SELECT COUNT(*)` = 10,000, 10,000 distinct emails, 0.7–0.9 s; seed is idempotent (skips at 10,000, `--force` re-seeds) |
 | 6 | Employees: searchable, filterable, sortable, server-paginated | ✅ | `GET /api/employees` + `frontend/src/app/employees/page.tsx`; 20/page default, max 100; search "Priya" = 132 |
 | 7 | Employee detail + full salary history | ✅ | `GET /api/employees/:id`; `frontend/src/app/employees/[id]/page.tsx` |
 | 8 | Salary change validated + audited (never silently overwritten) | ✅ | `modules/salary/`; PATCH validated (`newSalary > 0`, reason required), one transaction updates salary + inserts history; API test asserts exactly 1 history row |
 | 9 | Add employee (validated create) | ✅ | `POST /api/employees`; `frontend/src/app/employees/new/page.tsx` |
 | 10 | Analytics: headcount, payroll, avg/median, by dept/country/level, distribution, top 10, outliers | ✅ | `GET /api/analytics/summary` (`modules/analytics/`); measured on 10,000 rows: avg USD 4,555, median USD 3,587, 10 depts, 8 countries |
 | 11 | CSV export respecting filters, streamed | ✅ | `GET /api/employees/export`; measured 10,001 lines (header + 10,000 rows), correct header |
-| 12 | Meaningful, fast, deterministic tests | ✅ | Backend 90 tests, frontend 62 tests; see `docs/TESTING.md` (99.74% / 100% lines) |
+| 12 | Meaningful, fast, deterministic tests | ✅ | Backend 93 tests, frontend 62 tests; see `docs/TESTING.md` (99.74% / 100% lines) |
 | 13 | Incremental commits showing evolution | ✅ | Every feature/change/fix has its own branch off `main`, merged with `git merge --no-ff` — see `git log --graph` (no squash, no direct commits to `main` after the initial commit) |
 | 14 | Artifacts committed | ✅ | `docs/REQUIREMENTS.md`, `PLANNING.md`, `ARCHITECTURE.md`, `DESIGN-PATTERNS.md`, `ENGINEERING-REVIEW.md`, `TRADEOFFS.md`, `PERFORMANCE.md`, `TESTING.md`, this file |
-| 15 | Deployed software + video demo | ⏳ Phase 2 | Not done yet — honestly marked, not claimed. Deployment notes in `docs/ARCHITECTURE.md`; this repo was pushed with its full branch/merge history intact |
+| 15 | Deployed software + video demo | ⏳ Phase 2 | Configs ready, live URLs not created yet: `render.yaml` (Render Blueprint) + runbook `docs/DEPLOYMENT.md`. The row flips to ✅ only when the live smoke checks in `docs/DEPLOYMENT.md` step 5 pass. |
 
 ## Rework verification (measured by hand, 23 Nov 2026)
 
-- Backend: `npm run build` zero errors; `npm test` 90/90; `npm run coverage`
+- Backend: `npm run build` zero errors; `npm test` 93/93; `npm run coverage`
   99.73% lines / 98.97% branches / 100% functions.
 - Frontend: `npm run typecheck` zero errors; `npm run build` clean
   (6 routes, First Load JS 90–99 kB); `npm test` 62/62; coverage 100%.

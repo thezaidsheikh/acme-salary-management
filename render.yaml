@@ -1,0 +1,51 @@
+# Render Blueprint — deploys the backend + Postgres from this repo.
+# Full runbook: docs/DEPLOYMENT.md
+#
+# How to use it:
+#   1. In Render: New → Blueprint → connect this GitHub repo.
+#      Render creates the web service + database below.
+#   2. After the first deploy, seed once from the Render shell:
+#        cd backend && npm run seed -- --force
+#      (The seed is NOT in preDeployCommand on purpose: it TRUNCATEs,
+#      so running it on every deploy would wipe any salary edits a
+#      recruiter made. The script itself is idempotent — without
+#      --force it skips when 10,000 employees already exist.)
+#   3. Deploy the frontend on Vercel (root directory `frontend`,
+#      NEXT_PUBLIC_API_URL = the Render backend URL below), then set
+#      FRONTEND_URL here to the real Vercel URL and redeploy the backend.
+#      CORS reads FRONTEND_URL at startup, so the backend must restart.
+#
+# Free-plan notes: the web service sleeps after ~15 min of inactivity
+# (first load can take up to ~1 minute), and the free Postgres expires
+# after 90 days. Both are fine for a demo; see docs/DEPLOYMENT.md.
+services:
+  - type: web
+    name: acme-salary-api
+    env: node
+    plan: free
+    # --include=dev: tsx (migrate/seed) and tsc (build) are devDependencies;
+    # without this flag Render's production install would skip them.
+    buildCommand: cd backend && npm install --include=dev && npm run build
+    startCommand: cd backend && node dist/src/index.js
+    # Runs on every deploy, before the new code starts: creates the
+    # tables/indexes. Safe to re-run — the migration is idempotent.
+    preDeployCommand: cd backend && npm run migrate
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: acme-salary-db
+          property: connectionString
+      # PLACEHOLDER — replace with the real Vercel frontend URL after
+      # step 3 above, then redeploy this service (Manual Deploy in
+      # the Render dashboard). Until then the deployed frontend gets
+      # no Access-Control-Allow-Origin header and the browser blocks
+      # its API calls; localhost:3000 still works for local dev.
+      - key: FRONTEND_URL
+        value: https://YOUR-VERCEL-URL.vercel.app
+      - key: NODE_ENV
+        value: production
+    # Render sets PORT itself; the app listens on process.env.PORT.
+
+databases:
+  - name: acme-salary-db
+    plan: free
