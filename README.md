@@ -9,7 +9,7 @@ See `docs/REQUIREMENTS.md` first — it was written before any code.
 TypeScript + Tailwind CSS 3 (frontend). Tests: Vitest (+ Supertest,
 Testing Library) with v8 coverage.
 
-**Measured (23 Nov 2026):** backend 170/170 tests, 99.85% lines covered;
+**Measured (23 Nov 2026):** backend 174/174 tests, 99.85% lines covered;
 frontend 88/88 tests, 100% lines covered; seed exactly 10,000 employees
 in ~0.8 s. Full numbers in `docs/TESTING.md` and `docs/VERIFICATION.md`.
 
@@ -112,7 +112,7 @@ backend/src/
   seed/                  # deterministic 10,000-employee generator + factory
   ../migrations/001_init.sql
   ../migrations/002_salary_bands.sql
-  ../tests/              # 170 tests (Vitest + Supertest + pg-mem)
+  ../tests/              # 174 tests (Vitest + Supertest + pg-mem)
 frontend/src/
   app/                   # Next.js routes: /, /employees, /employees/new, /employees/[id], /audit
   features/employees/    # typed API client + types (single source)
@@ -125,7 +125,7 @@ docs/                    # reviewer artifacts (see below)
 ## Tests
 
 ```bash
-cd backend && npm test && npm run coverage    # 170 tests, 99.85% lines
+cd backend && npm test && npm run coverage    # 174 tests, 99.85% lines
 cd frontend && npm test && npm run coverage   # 88 tests, 100% lines
 cd backend && npx tsx scripts/verify-pgmem.ts # migration + 10k seed + HTTP smoke, no Postgres server
 ```

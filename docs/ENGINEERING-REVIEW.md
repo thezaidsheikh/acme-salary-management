@@ -126,7 +126,7 @@ and every number below was measured, not assumed:
   afterwards (10,000 rows, max salary 521,500).
 - **CSV export:** 10,001 lines (header + 10,000 rows), correct header,
   streamed in pages so the whole export is never held in memory.
-- **Tests:** backend 170/170, 99.85% lines / 99.53% branches / 100%
+- **Tests:** backend 174/174, 99.85% lines / 99.53% branches / 100%
   functions; frontend 88/88, 100% lines. The gaps below 100% are
   documented honestly in `docs/TESTING.md` (a defensive fallback and
   a synthetic V8 branch — both proven unreachable, not hidden).
@@ -159,14 +159,14 @@ and every number below was measured, not assumed:
   that exact row (Lukas Ahmed, Operations, AED). The `/audit` page
   shows the same rows with the same filters and server-side
   pagination; it is linked from the header nav and the dashboard.
-  Full numbers after this feature: backend 170 tests, frontend 88
+  Full numbers after this feature: backend 174 tests, frontend 88
   tests, both builds clean.
 - **Builds:** `npm run build` clean in both packages; `next build`
   clean (7 routes, First Load JS 90–100 kB).
 - **No `any` types:** `grep` for `any` in `backend/src` +
   `frontend/src` returns none (only the word in comments).
 
-### Two real failures found by running the app — and fixed
+### Three real failures found by running the app — and fixed
 
 1. **`psql: command not found` on `npm run migrate`.** The database
    was running (Docker Postgres) but the `psql` CLI was not installed
@@ -186,6 +186,23 @@ and every number below was measured, not assumed:
    origins still get no `Access-Control-Allow-Origin` header. Eight
    new tests prove each allowed origin works and an unknown origin is
    blocked.
+3. **500 on a malformed employee id (23 Nov 2026, found on the live
+   API).** `GET /api/employees/not-a-uuid` returned a generic 500:
+   Postgres rejects any non-UUID string in `WHERE id = $1` with
+   "invalid input syntax for type uuid", and the shared error handler
+   turned that into a 500. The in-memory tests never caught it —
+   they use ids like `emp-0` and the in-memory repository compares
+   strings, so "nope" simply missed and returned 404. The fix
+   (branch `fix/invalid-id-404`) is a shared `isUuid` check in
+   `backend/src/shared/ids.ts`, applied in
+   `PgEmployeeRepository.getById`: a malformed id returns null, so
+   the API answers 404 "Employee not found" — the same answer a
+   well-formed but absent UUID already got. The same guard also
+   covers `PATCH /:id/salary`, whose service looks the employee up
+   through `getById` before writing. Four new pg-mem tests
+   (`tests/invalidId.test.ts`) prove both routes return 404 for
+   malformed ids, and a valid UUID still resolves. Full numbers
+   after the fix: backend 174 tests, frontend 88 tests.
 
 Both fixes were found by running the app on a real machine, not by
 reading the code — which is exactly why local verification is part of

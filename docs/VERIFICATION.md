@@ -18,7 +18,7 @@ Re-checked 23 Nov 2026 for the new branch-per-feature repo (rebuilt from the ver
 | 9 | Add employee (validated create) | ✅ | `POST /api/employees`; `frontend/src/app/employees/new/page.tsx` |
 | 10 | Analytics: headcount, payroll, avg/median, by dept/country/level, distribution, top 10, outliers | ✅ | `GET /api/analytics/summary` (`modules/analytics/`); measured on 10,000 rows: avg USD 4,555, median USD 3,587, 10 depts, 8 countries; band summary below 3,005 / within 6,995 / above 0 (see § Salary bands below) |
 | 11 | CSV export respecting filters, streamed | ✅ | `GET /api/employees/export`; measured 10,001 lines (header + 10,000 rows), correct header |
-| 12 | Meaningful, fast, deterministic tests | ✅ | Backend 170 tests, frontend 88 tests; see `docs/TESTING.md` (99.85% / 100% lines) |
+| 12 | Meaningful, fast, deterministic tests | ✅ | Backend 174 tests, frontend 88 tests; see `docs/TESTING.md` (99.85% / 100% lines) |
 | 13 | Incremental commits showing evolution | ✅ | Every feature/change/fix has its own branch off `main`, merged with `git merge --no-ff` — see `git log --graph` (no squash, no direct commits to `main` after the initial commit) |
 | 14 | Artifacts committed | ✅ | `docs/REQUIREMENTS.md`, `PLANNING.md`, `ARCHITECTURE.md`, `DESIGN-PATTERNS.md`, `ENGINEERING-REVIEW.md`, `TRADEOFFS.md`, `PERFORMANCE.md`, `TESTING.md`, this file |
 | 15 | Deployed software + video demo | ⏳ Phase 2 (backend live) | Backend LIVE at `https://acme-salary-api-droy.onrender.com` — `GET /api/health` returns `{"data":{"status":"ok"}}` (verified 23 Nov 2026). Seed NOT yet run on the live DB (0 employees — Render Shell needs a paid plan; the free workaround is BUILT on branch `feat/seed-on-start`: set `SEED_ON_START=true` on the Render service and it seeds itself on boot, then verify the live total is 10,000), frontend not yet deployed (Vercel URL TBD), video demo not yet recorded. Blueprint/deployment fixes in `render.yaml` + `docs/DEPLOYMENT.md` (free tier: no pre-deploy command; start command `node backend/dist/src/index.js`; migration now idempotent). The row flips to ✅ only when the live smoke checks in `docs/DEPLOYMENT.md` step 5 pass. |
@@ -82,7 +82,7 @@ the HR Manager's first question after "who changed this salary?" is
 
 ## Rework verification (measured by hand, 23 Nov 2026)
 
-- Backend: `npm run build` zero errors; `npm test` 170/170; `npm run coverage`
+- Backend: `npm run build` zero errors; `npm test` 174/174; `npm run coverage`
   99.85% lines / 99.53% branches / 100% functions.
 - Frontend: `npm run typecheck` zero errors; `npm run build` clean
   (7 routes, First Load JS 90–100 kB); `npm test` 88/88; coverage 100%.
