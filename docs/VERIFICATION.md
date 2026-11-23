@@ -21,7 +21,7 @@ Re-checked 23 Nov 2026 for the new branch-per-feature repo (rebuilt from the ver
 | 12 | Meaningful, fast, deterministic tests | ✅ | Backend 93 tests, frontend 62 tests; see `docs/TESTING.md` (99.74% / 100% lines) |
 | 13 | Incremental commits showing evolution | ✅ | Every feature/change/fix has its own branch off `main`, merged with `git merge --no-ff` — see `git log --graph` (no squash, no direct commits to `main` after the initial commit) |
 | 14 | Artifacts committed | ✅ | `docs/REQUIREMENTS.md`, `PLANNING.md`, `ARCHITECTURE.md`, `DESIGN-PATTERNS.md`, `ENGINEERING-REVIEW.md`, `TRADEOFFS.md`, `PERFORMANCE.md`, `TESTING.md`, this file |
-| 15 | Deployed software + video demo | ⏳ Phase 2 | Configs ready, live URLs not created yet: `render.yaml` (Render Blueprint) + runbook `docs/DEPLOYMENT.md`. The row flips to ✅ only when the live smoke checks in `docs/DEPLOYMENT.md` step 5 pass. |
+| 15 | Deployed software + video demo | ⏳ Phase 2 (backend live) | Backend LIVE at `https://acme-salary-api-droy.onrender.com` — `GET /api/health` returns `{"data":{"status":"ok"}}` (verified 23 Nov 2026). Seed NOT yet run (live DB: 0 employees — Render Shell needs a paid plan, free workaround planned next), frontend not yet deployed (Vercel URL TBD), video demo not yet recorded. Blueprint/deployment fixes in `render.yaml` + `docs/DEPLOYMENT.md` (free tier: no pre-deploy command; start command `node backend/dist/src/index.js`; migration now idempotent). The row flips to ✅ only when the live smoke checks in `docs/DEPLOYMENT.md` step 5 pass. |
 
 ## Rework verification (measured by hand, 23 Nov 2026)
 

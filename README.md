@@ -155,6 +155,7 @@ re-seed: `npm run seed -- --force`.
 ## Out of scope (deliberate)
 
 Payroll/tax, auth/RBAC, leave/attendance, live FX conversion, AI chatbot
-— reasons in `docs/REQUIREMENTS.md`. Deployment + video demo are phase 2
-(configs ready in `render.yaml` + `docs/DEPLOYMENT.md`, live URLs not
-created yet).
+— reasons in `docs/REQUIREMENTS.md`. Deployment + video demo are phase 2:
+backend is live at `https://acme-salary-api-droy.onrender.com`
+(health verified); seed, frontend and video demo are still pending —
+see `render.yaml` + `docs/DEPLOYMENT.md`.
