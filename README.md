@@ -9,7 +9,7 @@ See `docs/REQUIREMENTS.md` first — it was written before any code.
 TypeScript + Tailwind CSS 3 (frontend). Tests: Vitest (+ Supertest,
 Testing Library) with v8 coverage.
 
-**Measured (23 Nov 2026):** backend 90/90 tests, 99.74% lines covered;
+**Measured (23 Nov 2026):** backend 93/93 tests, 99.74% lines covered;
 frontend 62/62 tests, 100% lines covered; seed exactly 10,000 employees
 in ~0.8 s. Full numbers in `docs/TESTING.md` and `docs/VERIFICATION.md`.
 
@@ -99,7 +99,7 @@ backend/src/
   modules/analytics/     # dashboard maths (pure computeAnalytics)
   seed/                  # deterministic 10,000-employee generator + factory
   ../migrations/001_init.sql
-  ../tests/              # 90 tests (Vitest + Supertest + pg-mem)
+  ../tests/              # 93 tests (Vitest + Supertest + pg-mem)
 frontend/src/
   app/                   # Next.js routes: /, /employees, /employees/new, /employees/[id]
   features/employees/    # typed API client + types (single source)
@@ -112,7 +112,7 @@ docs/                    # reviewer artifacts (see below)
 ## Tests
 
 ```bash
-cd backend && npm test && npm run coverage    # 90 tests, 99.74% lines
+cd backend && npm test && npm run coverage    # 93 tests, 99.74% lines
 cd frontend && npm test && npm run coverage   # 62 tests, 100% lines
 cd backend && npx tsx scripts/verify-pgmem.ts # migration + 10k seed + HTTP smoke, no Postgres server
 ```
@@ -134,9 +134,16 @@ and `http://127.0.0.1:3001`. Check three things:
 needs the `psql` CLI — it runs through the Node `pg` driver. Just
 `git pull` and run `npm run migrate` again.
 
+**`npm run seed` says "Already seeded — skipping"?** That is the
+idempotent seed working as designed (`backend/scripts/seed.ts`): it
+skips when the table already holds 10,000 employees, and refuses when
+it holds a different non-zero count. Add `-- --force` to wipe and
+re-seed: `npm run seed -- --force`.
+
 ## Docs for the reviewer
 
 - `docs/REQUIREMENTS.md` — one-page requirements (written first)
+- `docs/DEPLOYMENT.md` — deploy runbook: Render + Vercel steps, env vars, live smoke checks
 - `docs/ARCHITECTURE.md` — modular monolith, module boundaries, microservice extraction path
 - `docs/DESIGN-PATTERNS.md` — Repository, Service, DI, Factory, SOLID, DRY/KISS/YAGNI — each with file + example
 - `docs/TRADEOFFS.md` — every major decision + what was rejected
@@ -149,4 +156,5 @@ needs the `psql` CLI — it runs through the Node `pg` driver. Just
 
 Payroll/tax, auth/RBAC, leave/attendance, live FX conversion, AI chatbot
 — reasons in `docs/REQUIREMENTS.md`. Deployment + video demo are phase 2
-(not done yet); deployment notes are in `docs/ARCHITECTURE.md`.
+(configs ready in `render.yaml` + `docs/DEPLOYMENT.md`, live URLs not
+created yet).

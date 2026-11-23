@@ -106,7 +106,7 @@ and every number below was measured, not assumed:
   afterwards (10,000 rows, max salary 521,500).
 - **CSV export:** 10,001 lines (header + 10,000 rows), correct header,
   streamed in pages so the whole export is never held in memory.
-- **Tests:** backend 90/90, 99.74% lines / 99.01% branches / 100%
+- **Tests:** backend 93/93, 99.74% lines / 99.01% branches / 100%
   functions; frontend 62/62, 100% lines. The gaps below 100% are
   documented honestly in `docs/TESTING.md` (a defensive fallback and
   a synthetic V8 branch — both proven unreachable, not hidden).

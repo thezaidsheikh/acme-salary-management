@@ -18,7 +18,7 @@ cd backend && npx tsx scripts/verify-pgmem.ts   # migration + 10k seed + HTTP sm
 
 | Package | Tests | Lines | Branches | Functions | Statements |
 |---|---|---|---|---|---|
-| Backend | 90 passed, 12 files | 99.74% | 99.01% | 100% | 99.74% |
+| Backend | 93 passed, 12 files | 99.74% | 99.01% | 100% | 99.74% |
 | Frontend (Next.js) | 62 passed, 9 files | 100% | 100% | 100% | 100% |
 
 Thresholds are enforced at 90% in both `vitest.config.ts` files — the
@@ -26,7 +26,7 @@ run fails if coverage drops below them.
 
 ## What is tested
 
-**Backend (90 tests):**
+**Backend (93 tests):**
 - Validation — every Zod schema error path (bad email/level/date,
   salary ≤ 0, missing/short reason, page 0, pageSize > 100, bad sort).
 - Analytics maths — median (odd/even/empty/single), average, `toUsd`
@@ -34,6 +34,9 @@ run fails if coverage drops below them.
   (none/some), top earners with fewer than 10 employees.
 - Seed determinism — same seed → same employees; 10,000 rows, 10,000
   unique emails; salaries in band.
+- Seed idempotency — seeds on an empty DB, skips when already seeded
+  at 10,000, re-seeds with `--force`, refuses to wipe a partially
+  filled table without `--force` (pg-mem, real migration + real SQL).
 - Salary rules — same salary rejected, unknown employee 404, duplicate
   email 400, PATCH creates exactly one history row with old + new.
 - Repository — InMemory all methods (filters, sorts asc/desc, pagination
