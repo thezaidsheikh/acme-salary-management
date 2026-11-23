@@ -142,6 +142,22 @@ describe("GET /api/audit-log (in-memory repo, no DB)", () => {
     expect(unknown.body.data).toEqual([]);
   });
 
+  it("skips a history row whose employee is gone, and orders equal timestamps by id", async () => {
+    const { h1, h2, h3 } = await seedHistory(repo);
+    // An orphan row (no matching employee — impossible in Postgres, where
+    // the FK cascades, but possible in a hand-built in-memory store) is
+    // skipped, never shown with a blank name.
+    repo.history.push({ ...h1, id: "h-orphan", employeeId: "missing-employee" });
+    // Two changes sharing a timestamp order by id, descending.
+    h1.id = "h-a";
+    h2.id = "h-b";
+    h1.changedAt = new Date("2026-02-15T09:00:00.000Z");
+    h2.changedAt = new Date("2026-02-15T09:00:00.000Z");
+    const r = await request(app).get("/api/audit-log");
+    expect(r.body.meta.total).toBe(3);
+    expect(r.body.data.map((x: { id: string }) => x.id)).toEqual([h3.id, "h-b", "h-a"]);
+  });
+
   it("400s on a bad date, a reversed range, and out-of-range paging", async () => {
     await seedHistory(repo);
     expect((await request(app).get("/api/audit-log?from=15-02-2026")).status).toBe(400);

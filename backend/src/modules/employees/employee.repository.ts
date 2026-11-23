@@ -713,7 +713,10 @@ export class InMemoryEmployeeRepository implements EmployeeRepository {
         changedAt: h.changedAt,
       });
     }
-    rows.sort((a, b) => +b.changedAt - +a.changedAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+    // Newest first; the id tie-break (descending) keeps the order
+    // deterministic when two changes share a timestamp. localeCompare
+    // has no branches to cover — ids are unique, so it never returns 0.
+    rows.sort((a, b) => +b.changedAt - +a.changedAt || b.id.localeCompare(a.id));
     return {
       items: rows.slice((q.page - 1) * q.pageSize, q.page * q.pageSize),
       total: rows.length,
