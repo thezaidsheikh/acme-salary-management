@@ -1,5 +1,6 @@
 import cors from "cors";
 import express, { type Express } from "express";
+import { createCorsOptions } from "./shared/cors.js";
 import { pool } from "./shared/db.js";
 import { errorHandler, notFoundHandler } from "./shared/http.js";
 import { createAnalyticsModule } from "./modules/analytics/index.js";
@@ -19,8 +20,9 @@ import { createSalaryModule } from "./modules/salary/index.js";
  */
 export function createApp(repo?: EmployeeRepository): Express {
   const app = express();
-  // Next.js frontend origin; override with FRONTEND_URL in production.
-  app.use(cors({ origin: process.env.FRONTEND_URL ?? "http://localhost:3000" }));
+  // Allowed frontend origins (FRONTEND_URL, comma-separated, plus
+  // localhost/127.0.0.1 on 3000 and 3001). See shared/cors.ts.
+  app.use(cors(createCorsOptions()));
   app.use(express.json());
 
   const source = repo ?? pool;

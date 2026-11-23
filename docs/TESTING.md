@@ -18,7 +18,7 @@ cd backend && npx tsx scripts/verify-pgmem.ts   # migration + 10k seed + HTTP sm
 
 | Package | Tests | Lines | Branches | Functions | Statements |
 |---|---|---|---|---|---|
-| Backend | 80 passed, 10 files | 99.73% | 98.97% | 100% | 99.73% |
+| Backend | 90 passed, 12 files | 99.74% | 99.01% | 100% | 99.74% |
 | Frontend (Next.js) | 62 passed, 9 files | 100% | 100% | 100% | 100% |
 
 Thresholds are enforced at 90% in both `vitest.config.ts` files — the
@@ -26,7 +26,7 @@ run fails if coverage drops below them.
 
 ## What is tested
 
-**Backend (80 tests):**
+**Backend (90 tests):**
 - Validation — every Zod schema error path (bad email/level/date,
   salary ≤ 0, missing/short reason, page 0, pageSize > 100, bad sort).
 - Analytics maths — median (odd/even/empty/single), average, `toUsd`
@@ -44,6 +44,11 @@ run fails if coverage drops below them.
   create success.
 - Pagination edges — page beyond the last page returns an empty list
   with correct meta; pageSize 100 accepted, 101 rejected.
+- CORS allow-list — `localhost:3000`, `127.0.0.1:3000` and
+  `localhost:3001` get `Access-Control-Allow-Origin`; preflight OPTIONS
+  returns 204 with Allow-Origin + Allow-Methods; an unknown origin
+  gets no Allow-Origin header; a custom `FRONTEND_URL` list (commas,
+  trailing slashes stripped) is honoured alongside the defaults.
 
 **Frontend (62 tests):**
 - Utils — `formatMoney`/`formatDate` (including unknown-currency

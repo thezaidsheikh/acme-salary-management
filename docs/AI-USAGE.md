@@ -15,7 +15,7 @@ This solution was built with an agentic AI assistant (Muse), as the assessment e
 - "Clarify EVERY point of the assessment document in `zaid-docs/09-assessment-points-clarified.md` — what the doc says, what it means, what was done for it (file/feature), and what to say if a recruiter asks. Mark honestly what is phase 2 (deployment + video demo)."
 
 ## What was verified by hand (not trusted from AI)
-- `npm test` in backend (80 tests) and frontend (62 tests) — run, green.
+- `npm test` in backend (90 tests) and frontend (62 tests) — run, green.
   Coverage re-run after the rework: backend 99.73% lines / 98.97%
   branches / 100% functions; frontend 100% (see `docs/TESTING.md` for
   the exact gaps below 100%).
