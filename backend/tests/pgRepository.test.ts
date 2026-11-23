@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, beforeAll } from "vitest";
-import { newDb } from "pg-mem";
+import { memPool } from "./pgmem";
 import { PgEmployeeRepository } from "../src/modules/employees/employee.repository";
 import type { ListQuery } from "../src/modules/employees/employee.validation";
 
@@ -10,9 +10,7 @@ describe("PgEmployeeRepository (pg-mem, real migration)", () => {
   let repo: PgEmployeeRepository;
 
   beforeAll(async () => {
-    const db = newDb();
-    const { Pool } = db.adapters.createPg();
-    const pool = new Pool() as unknown as import("pg").Pool;
+    const pool = memPool();
     const migration = readFileSync(new URL("../migrations/001_init.sql", import.meta.url), "utf8");
     await pool.query(migration);
     repo = new PgEmployeeRepository(pool);
