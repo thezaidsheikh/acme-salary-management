@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { applyMigration, MIGRATION_FILE, MIGRATION_PATH } from "../scripts/migrate";
+import { applyMigration, applyMigrations, MIGRATION_FILE, MIGRATION_FILES, MIGRATION_PATH, MIGRATION_PATHS } from "../scripts/migrate";
 import { memPool } from "./pgmem";
 
 describe("migrate (pg-mem, no real Postgres, no psql)", () => {
@@ -40,5 +41,57 @@ describe("migrate (pg-mem, no real Postgres, no psql)", () => {
     const pool = memPool();
     await expect(applyMigration(pool, "/does/not/exist/001_init.sql")).rejects.toThrow(/ENOENT/);
     await pool.end();
+  });
+});
+
+describe("applyMigrations (pg-mem, real 001 + 002)", () => {
+  it("applies 001 then 002 in order and seeds the six salary bands", async () => {
+    expect(MIGRATION_FILES).toEqual(["migrations/001_init.sql", "migrations/002_salary_bands.sql"]);
+    const pool = memPool();
+    try {
+      const applied = await applyMigrations(pool);
+      expect(applied).toEqual(["001_init.sql", "002_salary_bands.sql"]);
+      const { rows } = await pool.query(
+        "SELECT level, min_salary, mid_salary, max_salary FROM salary_bands ORDER BY min_salary ASC",
+      );
+      expect(rows).toEqual([
+        { level: "Junior", min_salary: 1500, mid_salary: 2000, max_salary: 2500 },
+        { level: "Mid", min_salary: 2500, mid_salary: 3500, max_salary: 4500 },
+        { level: "Senior", min_salary: 4500, mid_salary: 6000, max_salary: 7500 },
+        { level: "Lead", min_salary: 7500, mid_salary: 8750, max_salary: 10000 },
+        { level: "Manager", min_salary: 9000, mid_salary: 11000, max_salary: 13000 },
+        { level: "Director", min_salary: 12000, mid_salary: 15000, max_salary: 18000 },
+      ]);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("002 is idempotent: re-running its seed insert adds no duplicate bands", async () => {
+    // Same pg-mem limitation as 001 (see migrate-idempotent.test.ts):
+    // pg-mem cannot re-plan a CREATE TABLE IF NOT EXISTS for a table
+    // with an enum column + CHECK constraints, so the whole file cannot
+    // be re-applied here. On real Postgres the whole file re-runs fine
+    // (IF NOT EXISTS + ON CONFLICT DO NOTHING). What this test proves
+    // is the part that matters for data: re-running the seed INSERT
+    // inserts nothing new, because of ON CONFLICT (level) DO NOTHING.
+    const pool = memPool();
+    try {
+      await applyMigrations(pool);
+      const sql = readFileSync(MIGRATION_PATHS[1], "utf8");
+      const insert = sql.match(/INSERT INTO salary_bands[\s\S]*?ON CONFLICT \(level\) DO NOTHING;/);
+      expect(insert).not.toBeNull();
+      await pool.query(insert![0]);
+      const { rows } = await pool.query("SELECT COUNT(*)::int AS c FROM salary_bands");
+      expect(rows[0].c).toBe(6);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("002 guards its table and seed rows (IF NOT EXISTS + ON CONFLICT DO NOTHING)", () => {
+    const sql = readFileSync(MIGRATION_PATHS[1], "utf8");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS salary_bands");
+    expect(sql).toContain("ON CONFLICT (level) DO NOTHING");
   });
 });
