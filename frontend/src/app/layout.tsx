@@ -32,6 +32,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <Link href="/employees" className="text-slate-600 hover:text-indigo-700">
                 Employees
               </Link>
+              <Link href="/audit" className="text-slate-600 hover:text-indigo-700">
+                Audit Log
+              </Link>
               <Link href="/employees/new" className="text-slate-600 hover:text-indigo-700">
                 Add Employee
               </Link>

@@ -1,6 +1,6 @@
-import type { Analytics, BandPosition, BandSummary, Employee, ImportReport, PageMeta, SalaryBand, SalaryHistory } from "./types";
+import type { Analytics, AuditLogRow, BandPosition, BandSummary, Employee, ImportReport, PageMeta, SalaryBand, SalaryHistory } from "./types";
 
-export type { Analytics, BandPosition, BandSummary, Employee, ImportReport, ImportRowFailure, PageMeta, SalaryBand, SalaryHistory } from "./types";
+export type { Analytics, AuditLogRow, BandPosition, BandSummary, Employee, ImportReport, ImportRowFailure, PageMeta, SalaryBand, SalaryHistory } from "./types";
 
 /** Base URL of the salary-management backend (public env var, same default as before). */
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -66,6 +66,26 @@ export const api = {
 
   /** Fetches the dashboard analytics summary. */
   analytics: () => req<Analytics>("/api/analytics/summary"),
+
+  /**
+   * Lists the company-wide audit log (every salary change, newest first)
+   * with server-side employee search, department and date-range filters
+   * and pagination. Returns the rows plus pagination metadata.
+   */
+  listAuditLog: (params: Record<string, string | number>) => {
+    const q = new URLSearchParams(
+      Object.entries(params).map(([k, v]) => [k, String(v)]),
+    ).toString();
+    return fetch(`${BASE}/api/audit-log?${q}`).then(async (r) => {
+      const body = (await r.json()) as {
+        data: AuditLogRow[];
+        meta: PageMeta;
+        error?: { message?: string };
+      };
+      if (!r.ok) throw new Error(body.error?.message ?? "Failed to load audit log");
+      return body as { data: AuditLogRow[]; meta: PageMeta };
+    });
+  },
 
   /** Builds the CSV-export URL for the current list filters. */
   exportUrl: (params: Record<string, string>) =>
