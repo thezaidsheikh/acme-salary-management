@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
+import { isUuid } from "../../shared/ids.js";
 import type { ListQuery } from "./employee.validation.js";
 import type { AuditLogQuery } from "../audit/audit.validation.js";
 import type {
@@ -200,10 +201,18 @@ export class PgEmployeeRepository implements EmployeeRepository {
 
   /**
    * Fetch one employee plus their salary history (newest first).
+   * A malformed id is "not found", not a 500: Postgres rejects any
+   * non-UUID string in `WHERE id = $1` with "invalid input syntax for
+   * type uuid", and the shared error handler turns that into a generic
+   * 500. Checking the shape here keeps the API contract — any id that
+   * cannot resolve to an employee is a 404 — and it also covers PATCH
+   * /:id/salary, whose service looks the employee up through getById
+   * before writing anything.
    * @param id Employee UUID.
    * @returns The employee with history, or null when not found.
    */
   async getById(id: string): Promise<EmployeeWithHistory | null> {
+    if (!isUuid(id)) return null;
     const e = await this.pool.query(`SELECT ${COLS} FROM employees WHERE id = $1`, [id]);
     if (e.rows.length === 0) return null;
     const h = await this.pool.query(

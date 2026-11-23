@@ -18,7 +18,7 @@ cd backend && npx tsx scripts/verify-pgmem.ts   # migration + 10k seed + HTTP sm
 
 | Package | Tests | Lines | Branches | Functions | Statements |
 |---|---|---|---|---|---|
-| Backend | 170 passed, 19 files | 99.85% | 99.53% | 100% | 99.85% |
+| Backend | 174 passed, 20 files | 99.85% | 99.53% | 100% | 99.85% |
 | Frontend (Next.js) | 88 passed, 11 files | 100% | 100% | 100% | 100% |
 
 Thresholds are enforced at 90% in both `vitest.config.ts` files — the
@@ -26,7 +26,7 @@ run fails if coverage drops below them.
 
 ## What is tested
 
-**Backend (170 tests):**
+**Backend (174 tests):**
 - Audit log — `GET /api/audit-log` over the in-memory repo (empty log;
   newest-first ordering with who / whose / old → new / reason / when;
   pagination with page 2 differing from page 1 and correct meta;
@@ -41,6 +41,16 @@ run fails if coverage drops below them.
   the audit module is built by both factory branches (Pool and injected
   repository); the in-memory read skips an orphan history row and
   orders equal timestamps by id.
+- Malformed employee id — `PgEmployeeRepository.getById` returns null
+  for a non-UUID id (shared `isUuid` in `src/shared/ids.ts`), so
+  `GET /api/employees/:id` and `PATCH /api/employees/:id/salary`
+  answer 404 "Employee not found" instead of the 500 Postgres used
+  to throw for `WHERE id = $1` with a non-UUID string (regression
+  test `tests/invalidId.test.ts`, pg-mem with real SQL); a
+  well-formed but absent UUID still 404s, and a valid id still
+  resolves. The in-memory suite already covered "nope" -> 404 — it
+  never caught this, because the in-memory repository compares
+  strings and never touches Postgres.
 - CSV import — `parseCsv` (quoted commas, doubled quotes, CRLF + lone
   CR, BOM, blank lines kept as `[]`, unterminated quote to EOF);
   `EmployeeService.importEmployees` (all-valid file imports every row
