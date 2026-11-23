@@ -20,7 +20,7 @@ in ~0.8 s. Full numbers in `docs/TESTING.md` and `docs/VERIFICATION.md`.
 docker compose up -d
 # 2. Backend
 cd backend && cp .env.example .env && npm install
-npm run migrate   # psql $DATABASE_URL -f migrations/001_init.sql
+npm run migrate   # Node + pg — no psql CLI needed (runs migrations/001_init.sql on the shared pool)
 npm run seed      # exactly 10,000 employees
 npm run dev       # http://localhost:4000
 # 3. Frontend (new terminal)
