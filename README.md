@@ -9,8 +9,8 @@ See `docs/REQUIREMENTS.md` first — it was written before any code.
 TypeScript + Tailwind CSS 3 (frontend). Tests: Vitest (+ Supertest,
 Testing Library) with v8 coverage.
 
-**Measured (23 Nov 2026):** backend 103/103 tests, 99.75% lines covered;
-frontend 62/62 tests, 100% lines covered; seed exactly 10,000 employees
+**Measured (23 Nov 2026):** backend 131/131 tests, 99.79% lines covered;
+frontend 66/66 tests, 100% lines covered; seed exactly 10,000 employees
 in ~0.8 s. Full numbers in `docs/TESTING.md` and `docs/VERIFICATION.md`.
 
 **How it was engineered:** requirements written first and checked
@@ -29,7 +29,7 @@ engineering record is in `docs/ENGINEERING-REVIEW.md`.
 docker compose up -d
 # 2. Backend
 cd backend && cp .env.example .env && npm install
-npm run migrate   # Node + pg — no psql CLI needed (runs migrations/001_init.sql on the shared pool)
+npm run migrate   # Node + pg — no psql CLI needed (runs migrations/001_init.sql, then 002_salary_bands.sql, in order)
 npm run seed      # exactly 10,000 employees
 npm run dev       # http://localhost:4000
 # 3. Frontend (new terminal)
@@ -52,15 +52,17 @@ Order: `docs/requirements` → `chore/scaffold` → `feat/seed-10000` →
 `refactor/modular-monolith` → `test/coverage-90` → `feat/nextjs-setup` →
 `feat/shared-ui` → `feat/dashboard` → `feat/employees-list` →
 `feat/employee-detail` → `feat/add-employee` → `docs/architecture` →
-`docs/artifacts` → `docs/readme`. Tests travel with the feature they
+`docs/artifacts` → `docs/readme` → `feat/salary-bands` (migration +
+bands module, API wiring, UI). Tests travel with the feature they
 test, in the same branch.
 
 ## Architecture (one paragraph)
 
 A modular monolith: the backend is one deployable Express app made of
-three modules — `employees` (list/search/pagination/detail/create/export),
-`salary` (salary-change rule + audit) and `analytics` (dashboard numbers)
-— plus a `shared` kernel (pool, errors, HTTP helpers, maths). Each module
+four modules — `employees` (list/search/pagination/detail/create/export),
+`salary` (salary-change rule + audit), `analytics` (dashboard numbers)
+and `bands` (salary bands + compa-ratio, shared by the other three) —
+plus a `shared` kernel (pool, errors, HTTP helpers, maths). Each module
 owns its routes, controller, service and repository and talks to other
 modules only through their public interfaces, so any module can later be
 extracted into a microservice without a rewrite (the exact extraction
@@ -70,18 +72,20 @@ pages are client components fetching from the API at runtime.
 
 ```
 Next.js 14 (frontend/) ──HTTP/JSON──► Express modular monolith (backend/src)
-                                        modules/employees · salary · analytics
+                                        modules/employees · salary · analytics · bands
                                         ──pg Pool──► PostgreSQL 16
 ```
 
 ## API
 
 - `GET /api/health`
-- `GET /api/employees?search=&department=&country=&level=&sortBy=&sortOrder=&page=&pageSize=`
-- `GET /api/employees/:id` (with salary history)
-- `POST /api/employees`
-- `PATCH /api/employees/:id/salary` — `{ newSalary, reason }`, writes a SalaryHistory row in the same transaction
-- `GET /api/analytics/summary`
+- `GET /api/employees?search=&department=&country=&level=&sortBy=&sortOrder=&page=&pageSize=` — every row carries `band` (min/mid/max USD), `compaRatio` and `bandPosition`
+- `GET /api/employees/:id` (with salary history + band info)
+- `POST /api/employees` (returns the created employee with band info)
+- `PATCH /api/employees/:id/salary` — `{ newSalary, reason }`, writes a SalaryHistory row in the same transaction; the returned employee carries band info
+- `GET /api/bands` — all six level bands, Junior first
+- `GET /api/bands/:level` — one band (404 for an unknown level)
+- `GET /api/analytics/summary` — includes `bandSummary` (below / within / above counts)
 - `GET /api/employees/export?format=csv` (streamed, respects filters)
 
 Every response uses one envelope: success `{ data, meta? }`, error
@@ -97,9 +101,11 @@ backend/src/
   modules/employees/     # types, repository, validation, service, controller, routes, factory
   modules/salary/        # salary-change rule + audit
   modules/analytics/     # dashboard maths (pure computeAnalytics)
+  modules/bands/         # salary bands + compa-ratio (pure classifySalary)
   seed/                  # deterministic 10,000-employee generator + factory
   ../migrations/001_init.sql
-  ../tests/              # 103 tests (Vitest + Supertest + pg-mem)
+  ../migrations/002_salary_bands.sql
+  ../tests/              # 131 tests (Vitest + Supertest + pg-mem)
 frontend/src/
   app/                   # Next.js routes: /, /employees, /employees/new, /employees/[id]
   features/employees/    # typed API client + types (single source)
@@ -112,8 +118,8 @@ docs/                    # reviewer artifacts (see below)
 ## Tests
 
 ```bash
-cd backend && npm test && npm run coverage    # 103 tests, 99.75% lines
-cd frontend && npm test && npm run coverage   # 62 tests, 100% lines
+cd backend && npm test && npm run coverage    # 131 tests, 99.79% lines
+cd frontend && npm test && npm run coverage   # 66 tests, 100% lines
 cd backend && npx tsx scripts/verify-pgmem.ts # migration + 10k seed + HTTP smoke, no Postgres server
 ```
 

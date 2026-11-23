@@ -14,9 +14,10 @@ Salary data for 10,000 people across multiple countries lives in spreadsheets: s
 2. **Employee detail** — profile + current salary + full salary history.
 3. **Salary change** — validated update (`newSalary > 0`, `reason` required); every change writes an audit row (old, new, who, when, reason); salary is never silently overwritten.
 4. **Add employee** — validated create with the same fields as the list.
-5. **Analytics** — headcount, total monthly payroll, average + median, breakdown by department / country / level, salary-distribution buckets, top 10 earners, outliers (> 2× department median).
+5. **Analytics** — headcount, total monthly payroll, average + median, breakdown by department / country / level, salary-distribution buckets, top 10 earners, outliers (> 2× department median), and the salary-band summary (how many people sit below / within / above their level's band).
 6. **Export** — CSV export respecting current filters, streamed.
 7. **Seed** — deterministic script generating exactly 10,000 employees (fixed seed, realistic bands by level + country).
+8. **Salary bands + compa-ratio** — one pay band per level (monthly USD min–mid–max) stored in the database; every employee response shows their band, their compa-ratio (salary ÷ band midpoint) and whether they sit below, within or above the band; the dashboard shows the below/within/above counts.
 
 ## Deliberately out of scope
 | Left out | Why |
@@ -28,7 +29,7 @@ Salary data for 10,000 people across multiple countries lives in spreadsheets: s
 | AI chatbot / NLP Q&A | Nice-to-have; analytics + filters answer the same questions deterministically and testably. |
 
 ## Data model (summary)
-`Employee` (id, name, email unique, department, country, currency, jobTitle, level, managerId nullable, dateOfJoining, status, baseSalary) + `SalaryHistory` (employeeId, oldSalary, newSalary, currency, reason, changedBy, changedAt). Current salary is denormalised on `Employee` for fast reads; history is the audit source of truth.
+`Employee` (id, name, email unique, department, country, currency, jobTitle, level, managerId nullable, dateOfJoining, status, baseSalary) + `SalaryHistory` (employeeId, oldSalary, newSalary, currency, reason, changedBy, changedAt) + `SalaryBand` (level, minSalary, midSalary, maxSalary — monthly USD, one row per level). Current salary is denormalised on `Employee` for fast reads; history is the audit source of truth. Bands live in the database (not in code) so HR can change them without a deploy; the seed generates salaries from the same band values.
 
 ## Non-functional
 - 10,000 rows must feel instant: server pagination (default 20, max 100), DB indexes on department, country, level, baseSalary, email, name.

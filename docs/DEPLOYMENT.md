@@ -69,10 +69,12 @@ Free-plan limits to know about:
 
 ## 1b. One-time migration (no pre-deploy on the free tier)
 
-The migration (`backend/migrations/001_init.sql`) creates the tables
-and indexes. It is **idempotent** — safe to run more than once (the
-two enum types are guarded by DO blocks that check `pg_type` first;
-tables/indexes use `IF NOT EXISTS`). It does NOT run automatically
+The migrations (`backend/migrations/001_init.sql`, then
+`002_salary_bands.sql`) create the tables and indexes and seed the
+six salary bands. They are **idempotent** — safe to run more than once
+(the two enum types are guarded by DO blocks that check `pg_type`
+first; tables/indexes use `IF NOT EXISTS`; the band rows use
+`ON CONFLICT DO NOTHING`). They do NOT run automatically
 on deploy: there is no pre-deploy step on the free tier.
 
 How to run it once:

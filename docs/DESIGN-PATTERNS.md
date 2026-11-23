@@ -7,10 +7,14 @@ gives the location, why it was used, and a short example.
 
 - **Where:** `backend/src/modules/employees/employee.repository.ts` —
   `EmployeeRepository` (interface), `PgEmployeeRepository`,
-  `InMemoryEmployeeRepository`.
+  `InMemoryEmployeeRepository`; `backend/src/modules/bands/bands.repository.ts` —
+  `BandRepository` (interface), `PgBandRepository`,
+  `InMemoryBandRepository` (defaults to the same bands the seed uses).
 - **Why:** only the repository knows SQL. Services and tests depend on the
   interface, so the database can change (or be faked in tests) without
-  touching business logic.
+  touching business logic. The bands repository is the same pattern a
+  second time: `BandService` never knows whether bands come from the
+  `salary_bands` table or from memory.
 - **Example:**
   ```ts
   // Service code never sees SQL — it only sees the interface:
@@ -23,10 +27,15 @@ gives the location, why it was used, and a short example.
 - **Where:** `modules/employees/employee.service.ts` (`EmployeeService`),
   `modules/salary/salary.service.ts` (`SalaryService`),
   `modules/analytics/analytics.service.ts` (`AnalyticsService`,
-  pure `computeAnalytics`).
+  pure `computeAnalytics`), `modules/bands/bands.service.ts`
+  (`BandService`, pure `classifySalary`).
 - **Why:** business rules live in exactly one place. Example: "a salary
   change must differ from the current salary and must be audited" is
   enforced in `SalaryService`, so no controller, UI or test can bypass it.
+  The band rule is the same shape: "compa-ratio is salary ÷ band
+  midpoint, classified below/within/above" lives in `classifySalary`,
+  so the employee list, the detail page, the salary change and the
+  analytics summary can never disagree about a position.
 - **Example:**
   ```ts
   if (input.newSalary === current.baseSalary)
@@ -50,18 +59,24 @@ gives the location, why it was used, and a short example.
 
 ## Dependency Injection (constructor injection)
 
-- **Where:** all three services take `EmployeeRepository` in the
-  constructor; module factories (`modules/*/ *.factory.ts`) receive a
-  `Pool | EmployeeRepository`; `app.ts` (composition root) wires them.
+- **Where:** all four services take their repositories in the
+  constructor, and the employees, salary and analytics services also
+  take a `BandService`; module factories (`modules/*/ *.factory.ts`)
+  receive a `Pool | EmployeeRepository` and build a bands service from
+  the same input when the caller does not pass one; `app.ts`
+  (composition root) builds one bands module and shares its service.
 - **Why:** a class never creates its own dependencies, so tests can inject
   `InMemoryEmployeeRepository` and production injects the `pg` one — same
-  code, different wiring.
+  code, different wiring. Sharing one `BandService` (instead of each
+  module building its own) means every response classifies against the
+  same band rows.
 - **Example:**
   ```ts
   // modules/employees/employee.factory.ts (actual code):
-  export function createEmployeeModule(poolOrRepo: Pool | EmployeeRepository) {
+  export function createEmployeeModule(poolOrRepo: Pool | EmployeeRepository, bandsService?: BandService) {
     const repository = resolveRepository(poolOrRepo); // Pool -> Pg repo, or use the given repo
-    const service = new EmployeeService(repository);
+    const bands = bandsService ?? createBandsModule(poolOrRepo).service;
+    const service = new EmployeeService(repository, bands);
     return { router: createEmployeeRouter(service), service };
   }
   ```
@@ -71,7 +86,7 @@ gives the location, why it was used, and a short example.
 - **Where:** `backend/src/seed/employeeFactory.ts` —
   `createSeedEmployee(rng, index, usedEmails, managerIds)`; and the
   module factories above (`createEmployeeModule`, `createSalaryModule`,
-  `createAnalyticsModule`).
+  `createAnalyticsModule`, `createBandsModule`).
 - **Why:** creating a seed employee involves email-uniqueness, level
   weighting, salary bands and manager links. The factory hides that
   construction so `generateEmployees` stays a short loop.
@@ -84,18 +99,20 @@ gives the location, why it was used, and a short example.
 
 | Letter | Principle | Where + example |
 |---|---|---|
-| S | Single Responsibility | `modules/salary/` owns only salary changes; `modules/analytics/` owns only dashboard maths. A salary rule change touches one module. |
+| S | Single Responsibility | `modules/salary/` owns only salary changes; `modules/analytics/` owns only dashboard maths; `modules/bands/` owns only bands and compa-ratio. A salary rule change touches one module. |
 | O | Open/Closed | Add a new repository (e.g. a cached one) by implementing `EmployeeRepository` — `EmployeeService` does not change. |
 | L | Liskov Substitution | `InMemoryEmployeeRepository` substitutes for `PgEmployeeRepository` in every API/service test (`createApp(new InMemoryEmployeeRepository())`) with no test-code change. |
 | I | Interface Segregation | Services depend on the small `EmployeeRepository` interface (list/get/create/updateSalary/points/export), not on the whole `pg` `Pool` API. |
-| D | Dependency Inversion | `SalaryService` depends on the `EmployeeRepository` interface (imported via `modules/employees/index.ts`), never on `PgEmployeeRepository` or SQL. |
+| D | Dependency Inversion | `SalaryService` depends on the `EmployeeRepository` interface (imported via `modules/employees/index.ts`), never on `PgEmployeeRepository` or SQL. `EmployeeService`, `SalaryService` and `AnalyticsService` all depend on the `BandService` interface the same way — none of them knows the `salary_bands` table exists. |
 
 ## DRY — Don't Repeat Yourself
 
 - **Where:** `frontend/src/shared/lib/constants.ts` (departments,
   countries, levels listed once, imported by Employees + AddEmployee);
   `backend/src/shared/analytics.ts` (median/average/pagination used by
-  services and tests); one error envelope in `shared/http.ts`.
+  services and tests); one error envelope in `shared/http.ts`; one
+  `BandService` shared by the employees, salary and analytics services
+  instead of three copies of the compa-ratio maths.
 - **Example:** the country→currency map exists once in `constants.ts`;
   AddEmployee derives the currency from it instead of hard-coding it.
 
