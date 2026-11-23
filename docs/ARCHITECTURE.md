@@ -7,27 +7,31 @@
 │ Next.js 14       │ ─────────────► │ Express + TypeScript         │ ──────────► │ PostgreSQL 16│
 │ (App Router)     │                │ Modular monolith             │             │ Employee +   │
 │ Dashboard /      │                │ modules/employees · salary · │             │ SalaryHistory│
-│ Employees /      │                │ analytics · bands + shared   │             │ + SalaryBand │
-│ Detail / Add     │                │ kernel                       │             └──────────────┘
-└──────────────────┘                └──────────────────────────────┘
+│ Employees /      │                │ analytics · bands · audit +  │             │ + SalaryBand │
+│ Audit / Detail / │                │ shared kernel                │             │              │
+│ Add              │                │                              │             │              │
+└──────────────────┘                └──────────────────────────────┘             └──────────────┘
 ```
 
 The same diagram as Mermaid (renderable in GitHub):
 
 ```mermaid
 flowchart LR
-    HR[HR Manager<br/>Browser] --> FE[Next.js 14<br/>Dashboard / Employees<br/>Detail / Add]
+    HR[HR Manager<br/>Browser] --> FE[Next.js 14<br/>Dashboard / Employees<br/>Audit / Detail / Add]
     FE -->|HTTP / JSON| API[Express + TypeScript<br/>Modular monolith]
     API --> EMP[modules/employees<br/>list · detail · create · export · import]
     API --> SAL[modules/salary<br/>salary change + audit]
     API --> ANA[modules/analytics<br/>computeAnalytics]
     API --> BAN[modules/bands<br/>bands · compa-ratio]
+    API --> AUD[modules/audit<br/>company-wide audit log]
     EMP --> BAN
     SAL --> BAN
     ANA --> BAN
+    AUD --> EMP
     EMP --> SH[shared kernel<br/>db · errors · http · analytics]
     SAL --> EMP
     ANA --> EMP
+    AUD --> SH
     BAN --> SH
     EMP --> DB[(PostgreSQL 16<br/>employees<br/>salary_history<br/>salary_bands)]
     SAL --> DB
@@ -44,8 +48,9 @@ microservice without a rewrite (see "Extracting a microservice" below).
 
 | Area | Contents | Owns |
 |---|---|---|
-| `modules/employees/` | `employee.types`, `employee.repository` (interface + Pg + InMemory, incl. `existingEmails` + `createMany`), `employee.validation` (Zod), `employee.csv` (shared column list + CSV parser), `employee.service`, `employee.controller` (incl. multer upload), `employee.routes`, `employee.factory`, `index` (public API) | Employee list/search/filter/sort/pagination, detail, create, CSV export + CSV import — every employee returned carries band info (band, compa-ratio, position) via the bands service |
+| `modules/employees/` | `employee.types`, `employee.repository` (interface + Pg + InMemory, incl. `existingEmails` + `createMany` + `listAuditLog`), `employee.validation` (Zod), `employee.csv` (shared column list + CSV parser), `employee.service`, `employee.controller` (incl. multer upload), `employee.routes`, `employee.factory`, `index` (public API) | Employee list/search/filter/sort/pagination, detail, create, CSV export + CSV import — every employee returned carries band info (band, compa-ratio, position) via the bands service; also owns the salary-history table, so it serves the audit-log read (`listAuditLog`) too |
 | `modules/salary/` | `salary.service`, `salary.controller`, `salary.routes`, `salary.factory`, `index` | Salary change rule + audit (via the employees repository interface); the updated employee carries band info |
+| `modules/audit/` | `audit.types`, `audit.validation` (Zod), `audit.service`, `audit.controller`, `audit.routes`, `audit.factory`, `index` | Company-wide audit log: every salary change, newest first, paged + filtered — read-only, through the employees repository interface; no repository of its own, because the history table already has one owner (see the boundary rules below) |
 | `modules/analytics/` | `analytics.types`, `analytics.service` (pure `computeAnalytics`), `analytics.controller`, `analytics.routes`, `analytics.factory`, `index` | Dashboard numbers: averages, medians, breakdowns, outliers, band summary |
 | `modules/bands/` | `bands.types`, `bands.repository` (interface + Pg + InMemory), `bands.service` (pure `classifySalary`), `bands.controller`, `bands.routes`, `bands.factory`, `index` (public API) | Salary bands (one row per level, monthly USD min–mid–max), compa-ratio maths, band position; the one service every other module consumes for band data |
 | `shared/` | `db` (pool factory), `errors` (ApiError), `http` (asyncHandler, error/not-found handlers), `analytics` (median, average, FX, pagination meta) | Only truly cross-cutting code — nothing module-specific |
@@ -65,6 +70,14 @@ microservice without a rewrite (see "Extracting a microservice" below).
    update-plus-history write lives in the employees repository. (The
    salary module's *factory* reuses the same pool-to-repository wiring
    helper as the employees factory; that is composition, not data access.)
+   The audit module follows the same rule in the other direction: it has
+   no repository file of its own — `salary_history` already has exactly
+   one owner (the employees repository, which writes it), so the audit
+   read is a `listAuditLog` method on `EmployeeRepository` and the audit
+   service consumes that interface. A second repository class over the
+   same table would be a second store in disguise, and the log could
+   drift from the per-employee history. The bands module *does* have its
+   own repository, because `salary_bands` is its own table.
 3. **No business logic in controllers, no SQL in services, no DB access
    from routes.** Controllers validate (Zod) → call a service → shape the
    response. Services hold rules. Repositories are the only place that
@@ -80,16 +93,19 @@ microservice without a rewrite (see "Extracting a microservice" below).
 ## Frontend (`frontend/src`, Next.js 14 App Router)
 
 - `app/` — file routes: `/` (Dashboard), `/employees`, `/employees/new`,
-  `/employees/[id]`; `layout.tsx` (nav + metadata). All pages are
+  `/employees/[id]`, `/audit` (company-wide audit log); `layout.tsx`
+  (nav + metadata). All pages are
   `'use client'` components that fetch from the backend at runtime — the
   data is dynamic HR data, so there is no SSR data fetching; Next.js is
   used for file routing, layouts, metadata and production conventions.
   The dashboard shows the salary-band position counts (below / within /
-  above); the detail page shows the employee's band (min–mid–max),
+  above) and links to the audit log; the detail page shows the employee's band (min–mid–max),
   compa-ratio and a position badge.
 - `features/employees/` — the typed API client (`api.ts`) + types
-  (single source of truth for `Employee`, `Analytics`, …) +
+  (single source of truth for `Employee`, `Analytics`, `AuditLogRow`, …) +
   `ImportEmployees.tsx` (CSV import button, file picker, per-row report).
+  The audit page calls `api.listAuditLog` with the same search /
+  department / date-range / pagination params the backend validates.
   The sample CSV lives at `frontend/public/sample-employees.csv` (the
   exact export columns, 3 example rows) and is linked from the import UI.
 - `shared/components/` — `StatCard`, `BarList`.
@@ -111,6 +127,7 @@ microservice without a rewrite (see "Extracting a microservice" below).
 | `GET /api/bands` | bands | All six level bands, Junior first |
 | `GET /api/bands/:level` | bands | One band, or 404 for an unknown level |
 | `GET /api/analytics/summary` | analytics | Headcount, payroll, averages/medians, breakdowns, distribution, top earners, outliers, `bandSummary` |
+| `GET /api/audit-log?...` | audit | Paged audit rows (`{ data, meta }`), newest first; each row is a salary change joined with its employee (`employeeName`, `department`, `oldSalary`, `newSalary`, `currency`, `reason`, `changedBy`, `changedAt`). Filters: `search` (exact employee id, or name/email substring), `department`, `from`/`to` (YYYY-MM-DD, inclusive); 400 for a bad date or `from` after `to` |
 
 Every response uses one envelope: success `{ data, meta? }`, error
 `{ error: { code, message, details? } }`.
@@ -152,6 +169,22 @@ failed: [{ row, reason }] } }` and the UI shows the imported count plus
 every failed row with its file row number and reason. The `id` column
 is accepted (so an exported file round-trips) but ignored — the
 repository assigns fresh ids.
+
+## Audit-log flow (example)
+
+HR opens `/audit` → the page calls
+`GET /api/audit-log?page=1&pageSize=20` → audit router → controller
+validates the query with Zod (`from`/`to` must be YYYY-MM-DD,
+`from ≤ to`) → `AuditService` → `EmployeeRepository.listAuditLog` runs
+one `JOIN salary_history + employees` query ordered by
+`changed_at DESC, id DESC` with `LIMIT/OFFSET` + a `COUNT` → controller
+returns `{ data: [20 changes], meta: { total, page, totalPages } }` →
+the table renders who changed whose salary, old → new, reason, when.
+Filtering by employee, department or date range only changes the
+`WHERE` clause — same query, same envelope. Because the read goes
+through the same table the PATCH writes, a change made a second ago
+already appears on the page (verified: `scripts/verify-pgmem.ts`
+PATCHes a salary, then GETs the audit log and asserts the row).
 
 ## Error envelope
 

@@ -15,11 +15,17 @@ Never move 10,000 rows to the browser or hold them all in server memory when a p
    upload itself is capped at 5 MB so the file held in memory stays
    bounded (~45,000 rows max per file).
 8. **Frontend debounces search** (250 ms) so typing does not fire a request per keystroke.
+9. **Audit log is one JOIN + COUNT, paged** — `GET /api/audit-log` reads
+   `salary_history JOIN employees` ordered by `changed_at DESC, id DESC`
+   with `LIMIT/OFFSET`, 20 rows per page. The history table is small
+   (one row per salary change, not per employee), so the company-wide
+   scan stays cheap; the existing `salary_history(employee_id,
+   changed_at)` index serves the per-employee case.
 
 ## What was deliberately not done
 - No Redis/cache layer: at 10k rows Postgres answers these queries directly; a cache would add a service and stale-data risk for no measurable gain.
 - No materialised views: same reason — revisit past ~100k employees.
-- No chart library: CSS bars keep the Next.js First Load JS at 90–99 kB
+- No chart library: CSS bars keep the Next.js First Load JS at 90–100 kB
   per route (was ~185 kB JS / 59 kB gzip in the Vite build).
 
 ## Measured (real PostgreSQL 16, this VM, 23 Nov 2026 — re-measured after the rework)
@@ -28,7 +34,7 @@ Never move 10,000 rows to the browser or hold them all in server memory when a p
 - `GET /api/employees/export`: 10,001 lines (header + 10,000 rows) in ~0.26 s.
 - `GET /api/analytics/summary`: 10,000 employees, avg USD 4,555, median USD 3,587.
 - pg-mem verification (no server): same seed took 22 s — emulator overhead, not Postgres.
-- Next.js production build: 6 routes, First Load JS 90–99 kB per route.
+- Next.js production build: 7 routes, First Load JS 90–100 kB per route.
 
 ## How to verify
 ```bash

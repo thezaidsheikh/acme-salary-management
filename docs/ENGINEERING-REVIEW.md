@@ -34,7 +34,8 @@ actually run. Every claim below points at a file or a measured number.
   — followed by the later fixes (`fix/migrate-without-psql`,
   `fix/cors-origins`) and doc revisions, then the feature work
   (`feat/salary-bands`: migration + bands module, API wiring, UI;
-  `feat/csv-import`: API + tests, UI + sample CSV, coverage test, docs),
+  `feat/csv-import`: API + tests, UI + sample CSV, coverage test, docs;
+  `feat/audit-log`: API + tests, UI, verify-script + coverage fix, docs),
   each on its own branch.
 - Tests travel with the feature they test, in the same branch, so no
   branch is merged with its feature untested.
@@ -50,17 +51,17 @@ the summary, with the exact file for each pattern.
 
 | Pattern | Where | Why it was chosen |
 |---|---|---|
-| Repository | `backend/src/modules/employees/employee.repository.ts` — `EmployeeRepository` interface, `PgEmployeeRepository`, `InMemoryEmployeeRepository` | Only the repository knows SQL. Services depend on the interface, so the database can be swapped — or faked in tests — without touching business logic. The import's bulk behaviour is part of the same contract: `existingEmails` + `createMany` (one multi-row INSERT, all rows or none) live on the interface, so both implementations prove the same atomicity. |
-| Service layer | `modules/employees/employee.service.ts`, `modules/salary/salary.service.ts`, `modules/analytics/analytics.service.ts` (pure `computeAnalytics`) | A business rule lives in exactly one place. "A salary change must differ from the current salary and must be audited" is enforced in `SalaryService`, so no controller, UI or test can bypass it. |
+| Repository | `backend/src/modules/employees/employee.repository.ts` — `EmployeeRepository` interface, `PgEmployeeRepository`, `InMemoryEmployeeRepository` | Only the repository knows SQL. Services depend on the interface, so the database can be swapped — or faked in tests — without touching business logic. The import's bulk behaviour is part of the same contract: `existingEmails` + `createMany` (one multi-row INSERT, all rows or none) live on the interface, so both implementations prove the same atomicity. The audit log's read is part of it too: `listAuditLog` (one `JOIN salary_history + employees`, newest first) lives on the same interface — the history table already has one owner, so the audit module reads through it instead of growing a second repository over the same table. |
+| Service layer | `modules/employees/employee.service.ts`, `modules/salary/salary.service.ts`, `modules/analytics/analytics.service.ts` (pure `computeAnalytics`), `modules/audit/audit.service.ts` | A business rule lives in exactly one place. "A salary change must differ from the current salary and must be audited" is enforced in `SalaryService`, so no controller, UI or test can bypass it. "The company-wide log is newest first, server-paged, in the same envelope as the employee list" is enforced in `AuditService`, so the page and the API can never disagree about ordering or paging. |
 | Thin Controller | `modules/*/ *.controller.ts` (e.g. `modules/salary/salary.controller.ts`) | A controller only validates input, calls one service method and shapes the response. If a controller grows past that, the rule belongs in the service. |
-| Dependency Injection (constructor injection) | All four services take their repositories in the constructor, and the employees, salary and analytics services also take a `BandService`; module factories receive a `Pool \| EmployeeRepository`; `backend/src/app.ts` (composition root) builds one bands module and shares its service | A class never creates its own dependencies. Production injects the `pg` repository, tests inject the in-memory one — same code, different wiring. |
-| Factory | Module factories (`createEmployeeModule`, `createSalaryModule`, `createAnalyticsModule`, `createBandsModule` in `modules/*/ *.factory.ts`) and `backend/src/seed/employeeFactory.ts` (`createSeedEmployee`) | Building a seed employee involves email-uniqueness, level weighting, salary bands and manager links. The factory hides that construction so the generator stays a short loop. |
+| Dependency Injection (constructor injection) | All five services take their repositories in the constructor, and the employees, salary and analytics services also take a `BandService`; module factories receive a `Pool \| EmployeeRepository`; `backend/src/app.ts` (composition root) builds one bands module and shares its service | A class never creates its own dependencies. Production injects the `pg` repository, tests inject the in-memory one — same code, different wiring. The audit service takes only the repository — it needs no band data, so it takes no `BandService`. |
+| Factory | Module factories (`createEmployeeModule`, `createSalaryModule`, `createAnalyticsModule`, `createBandsModule`, `createAuditModule` in `modules/*/ *.factory.ts`) and `backend/src/seed/employeeFactory.ts` (`createSeedEmployee`) | Building a seed employee involves email-uniqueness, level weighting, salary bands and manager links. The factory hides that construction so the generator stays a short loop. |
 | Singleton | `backend/src/shared/db.ts` — one shared `pg` Pool (`export const pool`), created once and reused by every module | One connection pool for the whole app: connections are bounded and shared instead of every module opening its own. |
 
 Principles applied, with one example each (full table in
 `docs/DESIGN-PATTERNS.md`):
 
-- **SOLID** — S: `modules/salary/` owns only salary changes. O: a new
+- **SOLID** — S: `modules/salary/` owns only salary changes; `modules/audit/` owns only the company-wide read of the history (it writes nothing). O: a new
   repository needs no service change. L: the in-memory repository
   substitutes for the `pg` one in every API/service test. I: services
   depend on the small `EmployeeRepository` interface, not the whole
@@ -71,7 +72,9 @@ Principles applied, with one example each (full table in
   `backend/src/shared/http.ts`; median/average/pagination shared in
   `backend/src/shared/analytics.ts`; one CSV column list shared by
   export + import, and one Zod schema validating single-create and
-  every import row.
+  every import row; one pagination helper shared by the employee list
+  and the audit log, and one history table serving both the
+  per-employee history and the company-wide log.
 - **KISS** — plain tables + CSS bars instead of a chart library; `pg`
   + one SQL migration instead of an ORM; no cache, no auth, no
   microservices (see §4).
@@ -95,11 +98,17 @@ Every decision below has its full reasoning in
 | CSV import header | Must match the export columns exactly, in order (one shared constant) | Accepting any column order / extra columns — friendlier, but silently guessing columns is how salary data lands in the wrong field; a mapping UI is a whole feature for a problem the export already solves. |
 | Duplicate emails on import | Reported as failed rows, never a crash, never a whole-import failure | `ON CONFLICT DO NOTHING` (silently drops the row — the report could not say why); failing the whole import on one duplicate (punishes the good rows for one bad one). |
 | Compa-ratio currency | Fixed FX rates (`shared/analytics.ts`, the same rates the seed used) | Live FX — the assessment already rules out live conversion (non-deterministic, needs an external source). Fixed rates keep the ratio reproducible: a salary generated from a band converts back into that band. See `docs/TRADEOFFS.md`. |
-| Architecture | Modular monolith | Microservices — the brief says it is not looking for the most complex system. One deployable app with four modules and clear walls keeps extraction possible later (the exact path is in `docs/ARCHITECTURE.md`) without paying distributed-transaction costs now. |
+| Architecture | Modular monolith | Microservices — the brief says it is not looking for the most complex system. One deployable app with five modules and clear walls keeps extraction possible later (the exact path is in `docs/ARCHITECTURE.md`) without paying distributed-transaction costs now. |
 | Charts | Plain tables + CSS bars | Chart library — prettier, heavier; not needed to answer "how does the org pay people?" |
 | Cache | None | Redis — Postgres answers these queries in milliseconds at 10,000 rows; a cache would add stale-data risk for no measured gain. |
 | Auth | None (deliberate, documented) | A weak login bolted on — the brief has one persona (HR Manager); auth is listed as the next step instead of a half-built version. |
 | AI chatbot | Out of scope | Analytics + filters answer the same HR questions deterministically and testably. |
+| Audit log: new module vs extending salary | New `modules/audit/` (service + controller + routes + factory), reading through `EmployeeRepository.listAuditLog` | Extending the salary module — the salary module owns the *write* and its rule ("must differ, must be audited"); the company-wide *read* is a different reason to change, so it gets its own module. Putting the read in the salary module would also have forced the salary service to know about paging and filters it never needs. |
+| Audit log: new repository vs reusing the history store | Reuse: `listAuditLog` on `EmployeeRepository`, the single owner of `salary_history` | A separate `AuditRepository` class over the same table — a second store in disguise: two classes, two SQL shapes for one truth, and the log could drift from the per-employee history. No new table and no new migration either — the history the PATCH writes *is* the audit data. |
+| Audit log: pagination + filters | Same `{ data, meta }` envelope and `paginationMeta` helper as the employee list; filters are `WHERE` clauses on one JOIN query (search, department, inclusive from/to) | A separate audit endpoint shape, or client-side paging — the log grows with every salary change, so the page must never load all rows; and a second envelope would make the frontend handle two paging conventions. |
+| Audit log: date-range semantics | `from`/`to` are calendar dates, inclusive on both ends (`from` = start of day, `to` = end of day); `from` after `to` → 400 | Timestamps with times — HR thinks in dates ("changes in February"), not in `2026-02-28T23:59:59Z`; half-open `[from, to)` would silently drop the last day's changes. |
+| Audit log: ordering ties | `ORDER BY changed_at DESC, id DESC` (Pg); same in memory, with `localeCompare` for the id tie-break | `changed_at` alone — two changes in the same millisecond would order arbitrarily on re-read; the id tie-break makes the order deterministic. The in-memory comparator uses `localeCompare` instead of a ternary chain so the equal-id arm (unreachable — ids are unique) does not leave an uncoverable branch. |
+| Audit log: search semantics | One `search` param: exact employee id, or a name/email substring (`id::text = …` in SQL, so a non-UUID search never errors on the UUID column) | Separate `employeeId` + `name` params — two boxes for one question ("whose changes?"); the single box matches the employee list's search behaviour, which HR already knows. |
 
 ## 5. Manual verification — run by hand, not trusted on report
 
@@ -117,8 +126,8 @@ and every number below was measured, not assumed:
   afterwards (10,000 rows, max salary 521,500).
 - **CSV export:** 10,001 lines (header + 10,000 rows), correct header,
   streamed in pages so the whole export is never held in memory.
-- **Tests:** backend 155/155, 99.83% lines / 99.47% branches / 100%
-  functions; frontend 78/78, 100% lines. The gaps below 100% are
+- **Tests:** backend 170/170, 99.85% lines / 99.53% branches / 100%
+  functions; frontend 88/88, 100% lines. The gaps below 100% are
   documented honestly in `docs/TESTING.md` (a defensive fallback and
   a synthetic V8 branch — both proven unreachable, not hidden).
 - **Salary bands (23 Nov 2026):** migration 002 adds `salary_bands`
@@ -138,9 +147,22 @@ and every number below was measured, not assumed:
   non-CSV file and a wrong-header file are all 400s with nothing
   stored. The UI shows "Imported X of Y rows" plus every failed row;
   the sample CSV is `frontend/public/sample-employees.csv`. Full
-  numbers: backend 155 tests, frontend 78 tests, both builds clean.
+  numbers at that point: backend 155 tests, frontend 78 tests, both builds clean.
+- **Company-wide audit log (23 Nov 2026):** `GET /api/audit-log`
+  returns every salary change newest first with the joined employee
+  name and department; filters by employee (exact id or name/email
+  substring), department and inclusive date range, each alone and
+  combined, all verified in-memory and against pg-mem with the real
+  migration and real SQL. The proof that the log reads the same rows
+  the PATCH writes: `verify-pgmem.ts` PATCHes one seeded employee
+  (6,200 → 999,999, "Verification check") and the audit log returns
+  that exact row (Lukas Ahmed, Operations, AED). The `/audit` page
+  shows the same rows with the same filters and server-side
+  pagination; it is linked from the header nav and the dashboard.
+  Full numbers after this feature: backend 170 tests, frontend 88
+  tests, both builds clean.
 - **Builds:** `npm run build` clean in both packages; `next build`
-  clean (6 routes, First Load JS 90–99 kB).
+  clean (7 routes, First Load JS 90–100 kB).
 - **No `any` types:** `grep` for `any` in `backend/src` +
   `frontend/src` returns none (only the word in comments).
 

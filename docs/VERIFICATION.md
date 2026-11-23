@@ -18,7 +18,7 @@ Re-checked 23 Nov 2026 for the new branch-per-feature repo (rebuilt from the ver
 | 9 | Add employee (validated create) | ✅ | `POST /api/employees`; `frontend/src/app/employees/new/page.tsx` |
 | 10 | Analytics: headcount, payroll, avg/median, by dept/country/level, distribution, top 10, outliers | ✅ | `GET /api/analytics/summary` (`modules/analytics/`); measured on 10,000 rows: avg USD 4,555, median USD 3,587, 10 depts, 8 countries; band summary below 3,005 / within 6,995 / above 0 (see § Salary bands below) |
 | 11 | CSV export respecting filters, streamed | ✅ | `GET /api/employees/export`; measured 10,001 lines (header + 10,000 rows), correct header |
-| 12 | Meaningful, fast, deterministic tests | ✅ | Backend 155 tests, frontend 78 tests; see `docs/TESTING.md` (99.83% / 100% lines) |
+| 12 | Meaningful, fast, deterministic tests | ✅ | Backend 170 tests, frontend 88 tests; see `docs/TESTING.md` (99.85% / 100% lines) |
 | 13 | Incremental commits showing evolution | ✅ | Every feature/change/fix has its own branch off `main`, merged with `git merge --no-ff` — see `git log --graph` (no squash, no direct commits to `main` after the initial commit) |
 | 14 | Artifacts committed | ✅ | `docs/REQUIREMENTS.md`, `PLANNING.md`, `ARCHITECTURE.md`, `DESIGN-PATTERNS.md`, `ENGINEERING-REVIEW.md`, `TRADEOFFS.md`, `PERFORMANCE.md`, `TESTING.md`, this file |
 | 15 | Deployed software + video demo | ⏳ Phase 2 (backend live) | Backend LIVE at `https://acme-salary-api-droy.onrender.com` — `GET /api/health` returns `{"data":{"status":"ok"}}` (verified 23 Nov 2026). Seed NOT yet run on the live DB (0 employees — Render Shell needs a paid plan; the free workaround is BUILT on branch `feat/seed-on-start`: set `SEED_ON_START=true` on the Render service and it seeds itself on boot, then verify the live total is 10,000), frontend not yet deployed (Vercel URL TBD), video demo not yet recorded. Blueprint/deployment fixes in `render.yaml` + `docs/DEPLOYMENT.md` (free tier: no pre-deploy command; start command `node backend/dist/src/index.js`; migration now idempotent). The row flips to ✅ only when the live smoke checks in `docs/DEPLOYMENT.md` step 5 pass. |
@@ -62,12 +62,30 @@ come from a file, not from 10,000 form submissions.
 | UI: Import button + report + sample CSV | ✅ | `ImportEmployees.tsx` on the Employees page (file picker, "Imported X of Y rows", failed-row list, list refreshes after import); `frontend/public/sample-employees.csv` linked from the UI (exact export columns, 3 rows) |
 | Seed still exactly 10,000 | ✅ | `npx tsx scripts/verify-pgmem.ts` — ALL OK (migration, seed 10,000, health, search, analytics, PATCH audit, CSV export, CSV import: mixed file imports 2, reports rows 3–4, total becomes 10,002) |
 
+## Company-wide audit log — feature added after the core build (23 Nov 2026)
+
+Candidate-added feature (branch `feat/audit-log`, four commits:
+API + tests, UI, verify-script + coverage fix, docs), not an assessment
+requirement — the brief leaves the feature list to the candidate, and
+the HR Manager's first question after "who changed this salary?" is
+"show me every change", not one employee at a time.
+
+| Check | Status | Evidence |
+|---|---|---|
+| `GET /api/audit-log`, newest first, server-paginated | ✅ | `modules/audit/` (`audit.service.ts`, `audit.controller.ts`, `audit.routes.ts`, `audit.factory.ts`); same `{ data, meta }` envelope as the employee list — `paginationMeta` shared, not re-implemented |
+| One row says who / whose / old → new / reason / when | ✅ | `AuditLogRow` (`employeeName`, `department`, `oldSalary`, `newSalary`, `currency`, `reason`, `changedBy`, `changedAt`); API test asserts every field on the newest row |
+| Filters: employee, department, date range | ✅ | `search` (exact employee id, or name/email substring), `department`, `from`/`to` YYYY-MM-DD inclusive; each filter alone, combined with AND, and empty result all tested (in-memory + pg-mem) |
+| Reads the same history the PATCH writes — no second store | ✅ | `EmployeeRepository.listAuditLog` (one `JOIN salary_history + employees` in `PgEmployeeRepository`, same contract in `InMemoryEmployeeRepository`); no `AuditRepository` class, no new table, no new migration; `scripts/verify-pgmem.ts` PATCHes a salary then GETs the audit log and asserts the row appears with the right old/new/reason (measured: Lukas Ahmed, 6,200 → 999,999 AED, "Verification check") |
+| Invalid input rejected | ✅ | Bad date format, `from` after `to`, `page=0`, `pageSize=101` all → 400 (API tests) |
+| UI: `/audit` page with the same filters + pagination | ✅ | `frontend/src/app/audit/page.tsx` (search, department, from/to date inputs, 20 rows/page, Previous/Next); linked from the header nav and the dashboard; 7 page tests incl. each filter sending its param and pagination both ways |
+| Seed still exactly 10,000 | ✅ | `npx tsx scripts/verify-pgmem.ts` — ALL OK (migration, seed 10,000, health, search, analytics, PATCH audit, audit-log check, CSV export, CSV import) |
+
 ## Rework verification (measured by hand, 23 Nov 2026)
 
-- Backend: `npm run build` zero errors; `npm test` 155/155; `npm run coverage`
-  99.83% lines / 99.47% branches / 100% functions.
+- Backend: `npm run build` zero errors; `npm test` 170/170; `npm run coverage`
+  99.85% lines / 99.53% branches / 100% functions.
 - Frontend: `npm run typecheck` zero errors; `npm run build` clean
-  (6 routes, First Load JS 90–99 kB); `npm test` 78/78; coverage 100%.
+  (7 routes, First Load JS 90–100 kB); `npm test` 88/88; coverage 100%.
 - Seed: exactly 10,000 employees in 0.7 s; `COUNT(DISTINCT email)` = 10,000;
   search "Priya" = 132; min salary 1,000, max 521,500.
 - Backend smoke (built server, real Postgres 16): health 200 (~12 ms);
@@ -88,7 +106,7 @@ come from a file, not from 10,000 form submissions.
 
 The assessment doc itself leaves the feature list, data model, fields,
 API endpoints and UI screens to the candidate — there is no detailed
-spec to "miss". The scope in `docs/REQUIREMENTS.md` (features 1–11
+spec to "miss". The scope in `docs/REQUIREMENTS.md` (features 1–10
 above) is the candidate-defined scope, with reasons for what was left
 out. No deadline is stated in the doc; fast submissions are prioritised
 per the email. Submission is by replying to the same email with the
