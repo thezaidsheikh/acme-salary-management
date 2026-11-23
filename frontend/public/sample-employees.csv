@@ -1,0 +1,4 @@
+id,firstName,lastName,email,department,country,currency,jobTitle,level,baseSalary,dateOfJoining
+,Asha,Patel,asha.patel@acme.com,Engineering,India,INR,Software Engineer,Senior,150000,2022-03-01
+,Rohan,Mehta,rohan.mehta@acme.com,Design,USA,USD,Product Designer,Mid,90000,2021-06-15
+,Meera,Nair,meera.nair@acme.com,Engineering,India,INR,Engineering Manager,Manager,220000,2020-11-02

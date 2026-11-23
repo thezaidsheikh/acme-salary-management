@@ -55,6 +55,19 @@ export interface SalaryHistory {
   changedAt: string;
 }
 
+/** One row the CSV import could not import: file row number + reason. */
+export interface ImportRowFailure {
+  row: number;
+  reason: string;
+}
+
+/** Per-row report of a CSV import: rows held, rows imported, failures. */
+export interface ImportReport {
+  totalRows: number;
+  imported: number;
+  failed: ImportRowFailure[];
+}
+
 /** Pagination metadata returned with employee lists. */
 export interface PageMeta {
   total: number;

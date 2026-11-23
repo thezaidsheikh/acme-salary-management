@@ -127,4 +127,32 @@ describe("api client", () => {
       "http://localhost:4000/api/employees/export?department=Engineering&format=csv",
     );
   });
+
+  it("importEmployees POSTs the file as FormData and returns the report", async () => {
+    const report = { totalRows: 2, imported: 2, failed: [] };
+    fetchMock.mockImplementation(mockFetch({ data: report }));
+    const file = new File(["a,b"], "import.csv", { type: "text/csv" });
+    await expect(api.importEmployees(file)).resolves.toEqual(report);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:4000/api/employees/import",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const sent = fetchMock.mock.calls[0][1].body as FormData;
+    expect(sent).toBeInstanceOf(FormData);
+    expect(sent.get("file")).toBe(file);
+    // No JSON Content-Type: the browser must set the multipart boundary.
+    expect(fetchMock.mock.calls[0][1].headers).toBeUndefined();
+  });
+
+  it("importEmployees throws the envelope message on failure", async () => {
+    fetchMock.mockImplementation(mockFetch({ error: { message: "Only .csv files are accepted" } }, false, 400));
+    const file = new File(["x"], "notes.txt", { type: "text/plain" });
+    await expect(api.importEmployees(file)).rejects.toThrow("Only .csv files are accepted");
+  });
+
+  it("importEmployees falls back to a generic message without an envelope message", async () => {
+    fetchMock.mockImplementation(mockFetch({}, false, 500));
+    const file = new File(["x"], "import.csv", { type: "text/csv" });
+    await expect(api.importEmployees(file)).rejects.toThrow("Failed to import CSV");
+  });
 });
