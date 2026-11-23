@@ -14,19 +14,33 @@ cd frontend && npm run coverage     # same, with a coverage report
 cd backend && npx tsx scripts/verify-pgmem.ts   # migration + 10k seed + HTTP smoke, no Postgres server
 ```
 
-## Coverage — measured 23 Nov 2026 (re-measured after the CSV-import feature)
+## Coverage — measured 23 Nov 2026 (re-measured after the audit-log feature)
 
 | Package | Tests | Lines | Branches | Functions | Statements |
 |---|---|---|---|---|---|
-| Backend | 155 passed, 17 files | 99.83% | 99.47% | 100% | 99.83% |
-| Frontend (Next.js) | 78 passed, 10 files | 100% | 100% | 100% | 100% |
+| Backend | 170 passed, 19 files | 99.85% | 99.53% | 100% | 99.85% |
+| Frontend (Next.js) | 88 passed, 11 files | 100% | 100% | 100% | 100% |
 
 Thresholds are enforced at 90% in both `vitest.config.ts` files — the
 run fails if coverage drops below them.
 
 ## What is tested
 
-**Backend (155 tests):**
+**Backend (170 tests):**
+- Audit log — `GET /api/audit-log` over the in-memory repo (empty log;
+  newest-first ordering with who / whose / old → new / reason / when;
+  pagination with page 2 differing from page 1 and correct meta;
+  employee filter by name, email and exact id; department filter;
+  date-range filter inclusive on both ends, from-only, to-only and a
+  single day; combined filters with AND; empty result; 400s for a bad
+  date, a reversed range and out-of-range paging; a salary change made
+  via PATCH appears on the log with the right old/new/reason); the same
+  read over pg-mem with the real migration and real SQL (JOIN ordering,
+  filters, pagination, and the PATCH → audit proof end to end);
+  `AuditService.list` returns the shared `{ data, meta }` envelope;
+  the audit module is built by both factory branches (Pool and injected
+  repository); the in-memory read skips an orphan history row and
+  orders equal timestamps by id.
 - CSV import — `parseCsv` (quoted commas, doubled quotes, CRLF + lone
   CR, BOM, blank lines kept as `[]`, unterminated quote to EOF);
   `EmployeeService.importEmployees` (all-valid file imports every row
@@ -82,9 +96,11 @@ run fails if coverage drops below them.
   email 400, PATCH creates exactly one history row with old + new.
 - Repository — InMemory all methods (filters, sorts asc/desc, pagination
   edges, missing ids) plus `existingEmails`/`createMany` (whole batch,
-  empty batch, duplicate stored or in-batch inserts nothing); Pg repository against pg-mem (real migration +
+  empty batch, duplicate stored or in-batch inserts nothing) and
+  `listAuditLog` (all filters, orphan row skipped, equal-timestamp
+  ordering); Pg repository against pg-mem (real migration +
   real SQL: create, list, get, salary update with history, `createMany`
-  atomicity, `existingEmails`).
+  atomicity, `existingEmails`, `listAuditLog` JOIN).
 - HTTP/app — asyncHandler error forwarding, error envelope (ApiError vs
   500), unknown route 404, CSV export content + empty export, POST
   create success.
@@ -96,7 +112,7 @@ run fails if coverage drops below them.
   gets no Allow-Origin header; a custom `FRONTEND_URL` list (commas,
   trailing slashes stripped) is honoured alongside the defaults.
 
-**Frontend (78 tests):**
+**Frontend (88 tests):**
 - Utils — `formatMoney`/`formatDate` (including unknown-currency
   fallback), constants.
 - Components — `StatCard`, `BarList` (rows, widths, empty list);
@@ -108,18 +124,26 @@ run fails if coverage drops below them.
   clicking the button opens the file picker).
 - API client — all endpoints, error-envelope handling, export URL,
   `importEmployees` posts the file as FormData (no JSON Content-Type)
-  and returns the report; error paths fall back to "Failed to import CSV".
+  and returns the report; error paths fall back to "Failed to import CSV";
+  `listAuditLog` sends the search/department/date-range/page params and
+  returns data + meta; its error paths throw the envelope message, or
+  "Failed to load audit log" without one.
 - Pages (mocked API) — Dashboard loading/error/loaded, including the
   salary-band position counts; Employees loading/empty/error, filters,
   sort, pagination buttons, import controls present and list refetched
   after a successful import; EmployeeDetail loading/error, every
   salary-form validation error, success path, and the salary-band card
   for all three positions (Below / Within / Above badge); AddEmployee
-  validation errors and success navigation.
+  validation errors and success navigation; Audit log loading/empty/
+  error, rows with who / old → new / reason / when, search + department
+  + from/to filters each sending their param, pagination forward and
+  back with buttons disabled at the ends.
 
 ## Gaps — exactly what is below 100% and why
 
-**Backend (99.83% lines):**
+**Backend (99.85% lines):**
+- `src/modules/audit/` is 100% across the board — service, controller,
+  routes, factory and validation, including the `from ≤ to` refine.
 - `src/modules/employees/` is 100% lines / 100% functions across the
   board — `employee.csv.ts`, `employee.service.ts` and
   `employee.controller.ts` are fully covered, including the import's
@@ -132,12 +156,16 @@ run fails if coverage drops below them.
   genuinely unreachable. `LEVEL_WEIGHTS` sums to exactly 1.0 and
   `rng()` is in [0, 1), so an index is always picked inside the loop.
   Defensive code only.
-- `src/modules/employees/employee.repository.ts` 100% lines / 98.82%
-  branches — line 327, the synthetic V8 branch on `} finally {` in
+- `src/modules/employees/employee.repository.ts` 100% lines / 99.16%
+  branches — line 360, the synthetic V8 branch on `} finally {` in
   `PgEmployeeRepository.updateSalary`. Both paths execute
   `client.release()` (success via pg-mem COMMIT; failure via a fake-pool
   test asserting release after UPDATE + ROLLBACK both throw). V8 never
-  counts this synthetic branch; it is not a real gap.
+  counts this synthetic branch; it is not a real gap. The audit read's
+  own branches are all covered: the in-memory orphan-row guard by the
+  orphan test, and the equal-timestamp tie-break by the equal-timestamp
+  test (the comparator uses `localeCompare` precisely so it has no
+  third, uncoverable arm).
 - Excluded from coverage, with reasons in `vitest.config.ts`:
   `src/index.ts` (listen-only bootstrap) and `src/**/*.types.ts`
   (interfaces only — they emit no JavaScript, nothing to measure).

@@ -95,6 +95,43 @@ describe("api client", () => {
     await expect(api.listEmployees({ page: 1 })).rejects.toThrow("Failed to load employees");
   });
 
+  it("listAuditLog sends query params and returns data + meta", async () => {
+    const row = {
+      id: "h-1",
+      employeeId: "emp-1",
+      employeeName: "Priya Sharma",
+      department: "Engineering",
+      oldSalary: 150000,
+      newSalary: 155000,
+      currency: "INR",
+      reason: "Annual appraisal",
+      changedBy: "HR Manager",
+      changedAt: "2026-03-20T09:00:00.000Z",
+    };
+    const payload = { data: [row], meta: { total: 1, page: 1, pageSize: 20, totalPages: 1 } };
+    fetchMock.mockImplementation(mockFetch(payload));
+    await expect(
+      api.listAuditLog({ page: 1, pageSize: 20, search: "Priya", department: "Engineering", from: "2026-03-01", to: "2026-03-31" }),
+    ).resolves.toEqual(payload);
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain("/api/audit-log?");
+    expect(url).toContain("search=Priya");
+    expect(url).toContain("department=Engineering");
+    expect(url).toContain("from=2026-03-01");
+    expect(url).toContain("to=2026-03-31");
+    expect(url).toContain("page=1");
+  });
+
+  it("listAuditLog throws the envelope message on failure", async () => {
+    fetchMock.mockImplementation(mockFetch({ error: { message: "DB down" } }, false, 500));
+    await expect(api.listAuditLog({ page: 1 })).rejects.toThrow("DB down");
+  });
+
+  it("listAuditLog falls back to a generic message without an envelope message", async () => {
+    fetchMock.mockImplementation(mockFetch({}, false, 500));
+    await expect(api.listAuditLog({ page: 1 })).rejects.toThrow("Failed to load audit log");
+  });
+
   it("getEmployee returns the employee with salary history", async () => {
     const payload = { ...employee, salaryHistory: [] };
     fetchMock.mockImplementation(mockFetch({ data: payload }));

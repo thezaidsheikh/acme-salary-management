@@ -57,6 +57,17 @@ async function main() {
   console.log("PATCH salary:", patch.status, "old:", patchBody.data?.history?.oldSalary, "new:", patchBody.data?.history?.newSalary);
   const detail = await get(`/api/employees/${firstId}`);
   console.log("GET /api/employees/:id history rows:", detail.body.data?.salaryHistory?.length);
+  // Audit log: the PATCH change must appear company-wide, newest first,
+  // with the right old/new/reason — the same read the /audit page uses.
+  const firstName = (list.body.data[0].firstName as string).split(" ")[0];
+  const audit = await get(`/api/audit-log?search=${encodeURIComponent(firstName)}`);
+  const auditRow = (audit.body.data as Record<string, unknown>[] | undefined)?.find(
+    (x) => x.reason === "Verification check",
+  ) as Record<string, any> | undefined;
+  console.log("GET /api/audit-log?search=…:", audit.status, "total:", audit.body.meta?.total, "row:", JSON.stringify(auditRow));
+  if (audit.status !== 200 || !auditRow || auditRow.oldSalary !== patchBody.data?.history?.oldSalary || auditRow.newSalary !== 999999) {
+    throw new Error(`audit log missing the PATCH change: ${JSON.stringify(audit.body)}`);
+  }
   const csv = await fetch(`${base}/api/employees/export?format=csv`);
   const csvText = await csv.text();
   console.log("GET export CSV:", csv.status, "lines:", csvText.split("\n").length, "header:", csvText.split("\n")[0]);

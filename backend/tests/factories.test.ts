@@ -7,6 +7,7 @@ import { createApp } from "../src/app";
 import { createEmployeeModule } from "../src/modules/employees/index";
 import { createSalaryModule } from "../src/modules/salary/index";
 import { createAnalyticsModule } from "../src/modules/analytics/index";
+import { createAuditModule } from "../src/modules/audit/index";
 import { InMemoryEmployeeRepository } from "../src/modules/employees/employee.repository";
 
 // The module factories accept a Pool (production) or a repository
@@ -22,10 +23,14 @@ describe("module factories with a Pool", () => {
     app.use("/api/employees", createEmployeeModule(pool).router);
     app.use("/api/employees", createSalaryModule(pool).router);
     app.use("/api/analytics", createAnalyticsModule(pool).router);
+    app.use("/api/audit-log", createAuditModule(pool).router);
 
     const empty = await request(app).get("/api/employees");
     expect(empty.status).toBe(200);
     expect(empty.body.meta.total).toBe(0);
+    const audit = await request(app).get("/api/audit-log");
+    expect(audit.status).toBe(200);
+    expect(audit.body.meta.total).toBe(0);
     const summary = await request(app).get("/api/analytics/summary");
     expect(summary.status).toBe(200);
     expect(summary.body.data.totalEmployees).toBe(0);
@@ -41,6 +46,7 @@ describe("module factories with a Pool", () => {
     expect(createEmployeeModule(repo).service).toBeDefined();
     expect(createSalaryModule(repo).service).toBeDefined();
     expect(createAnalyticsModule(repo).service).toBeDefined();
+    expect(createAuditModule(repo).service).toBeDefined();
   });
 
   it("createApp() with no repo uses the default pool; health still answers", async () => {

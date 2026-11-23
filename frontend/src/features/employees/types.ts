@@ -55,6 +55,20 @@ export interface SalaryHistory {
   changedAt: string;
 }
 
+/** One row of the company-wide audit log: a salary change plus its employee. */
+export interface AuditLogRow {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  oldSalary: number;
+  newSalary: number;
+  currency: string;
+  reason: string;
+  changedBy: string;
+  changedAt: string;
+}
+
 /** One row the CSV import could not import: file row number + reason. */
 export interface ImportRowFailure {
   row: number;

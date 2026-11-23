@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { api, type Analytics } from "@/features/employees/api";
 import StatCard from "@/shared/components/StatCard";
 import BarList from "@/shared/components/BarList";
@@ -33,6 +34,12 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">How ACME pays people</h1>
+      <p className="text-sm text-slate-500">
+        <Link className="font-medium text-indigo-700" href="/audit">
+          View the audit log →
+        </Link>{" "}
+        every salary change in the company, newest first.
+      </p>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <StatCard label="Headcount" value={a.totalEmployees.toLocaleString()} sub="Active employees" />
         <StatCard label="Average salary (USD)" value={`$${a.averageSalaryUsd.toLocaleString()}`} sub="per month, FX-normalised" />
