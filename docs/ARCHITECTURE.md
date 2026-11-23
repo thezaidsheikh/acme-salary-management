@@ -18,7 +18,7 @@ The same diagram as Mermaid (renderable in GitHub):
 flowchart LR
     HR[HR Manager<br/>Browser] --> FE[Next.js 14<br/>Dashboard / Employees<br/>Detail / Add]
     FE -->|HTTP / JSON| API[Express + TypeScript<br/>Modular monolith]
-    API --> EMP[modules/employees<br/>list · detail · create · export]
+    API --> EMP[modules/employees<br/>list · detail · create · export · import]
     API --> SAL[modules/salary<br/>salary change + audit]
     API --> ANA[modules/analytics<br/>computeAnalytics]
     API --> BAN[modules/bands<br/>bands · compa-ratio]
@@ -44,7 +44,7 @@ microservice without a rewrite (see "Extracting a microservice" below).
 
 | Area | Contents | Owns |
 |---|---|---|
-| `modules/employees/` | `employee.types`, `employee.repository` (interface + Pg + InMemory), `employee.validation` (Zod), `employee.service`, `employee.controller`, `employee.routes`, `employee.factory`, `index` (public API) | Employee list/search/filter/sort/pagination, detail, create, CSV export — every employee returned carries band info (band, compa-ratio, position) via the bands service |
+| `modules/employees/` | `employee.types`, `employee.repository` (interface + Pg + InMemory, incl. `existingEmails` + `createMany`), `employee.validation` (Zod), `employee.csv` (shared column list + CSV parser), `employee.service`, `employee.controller` (incl. multer upload), `employee.routes`, `employee.factory`, `index` (public API) | Employee list/search/filter/sort/pagination, detail, create, CSV export + CSV import — every employee returned carries band info (band, compa-ratio, position) via the bands service |
 | `modules/salary/` | `salary.service`, `salary.controller`, `salary.routes`, `salary.factory`, `index` | Salary change rule + audit (via the employees repository interface); the updated employee carries band info |
 | `modules/analytics/` | `analytics.types`, `analytics.service` (pure `computeAnalytics`), `analytics.controller`, `analytics.routes`, `analytics.factory`, `index` | Dashboard numbers: averages, medians, breakdowns, outliers, band summary |
 | `modules/bands/` | `bands.types`, `bands.repository` (interface + Pg + InMemory), `bands.service` (pure `classifySalary`), `bands.controller`, `bands.routes`, `bands.factory`, `index` (public API) | Salary bands (one row per level, monthly USD min–mid–max), compa-ratio maths, band position; the one service every other module consumes for band data |
@@ -88,7 +88,10 @@ microservice without a rewrite (see "Extracting a microservice" below).
   above); the detail page shows the employee's band (min–mid–max),
   compa-ratio and a position badge.
 - `features/employees/` — the typed API client (`api.ts`) + types
-  (single source of truth for `Employee`, `Analytics`, …).
+  (single source of truth for `Employee`, `Analytics`, …) +
+  `ImportEmployees.tsx` (CSV import button, file picker, per-row report).
+  The sample CSV lives at `frontend/public/sample-employees.csv` (the
+  exact export columns, 3 example rows) and is linked from the import UI.
 - `shared/components/` — `StatCard`, `BarList`.
 - `shared/lib/constants.ts` — departments, countries + currencies, levels
   (single source; pages import it instead of re-listing — DRY).
@@ -104,6 +107,7 @@ microservice without a rewrite (see "Extracting a microservice" below).
 | `POST /api/employees` | employees | Created employee + band info (201) |
 | `PATCH /api/employees/:id/salary` | salary | `{ employee, history }`; employee carries band info |
 | `GET /api/employees/export?format=csv` | employees | Streamed CSV of the filtered list |
+| `POST /api/employees/import` | employees | `{ data: { totalRows, imported, failed: [{ row, reason }] } }` (200); 400 for a missing/non-CSV/over-5 MB file, an empty file, or a wrong header |
 | `GET /api/bands` | bands | All six level bands, Junior first |
 | `GET /api/bands/:level` | bands | One band, or 404 for an unknown level |
 | `GET /api/analytics/summary` | analytics | Headcount, payroll, averages/medians, breakdowns, distribution, top earners, outliers, `bandSummary` |
@@ -129,6 +133,25 @@ through the repository interface, rejects a salary equal to the current
 one → repository opens a transaction: update `employees.base_salary` AND
 insert a `SalaryHistory` row (old, new, reason, changedBy, time) → commit.
 If either write fails, both roll back.
+
+## CSV-import flow (example)
+
+HR picks a `.csv` file on the Employees page → `POST
+/api/employees/import` (multipart, field `file`, max 5 MB) → multer
+holds the file in memory and rejects non-CSV names before the handler
+runs → `EmployeeService.importEmployees` parses the text with the
+module's CSV parser, rejects an empty file or a header that is not
+exactly the export columns → every data row is validated with the same
+`createEmployeeSchema` the single-create endpoint uses (baseSalary
+converted from text first) → rows with a duplicate email (inside the
+file, or already stored — one `existingEmails` lookup) are reported as
+failed → all remaining valid rows are inserted by one multi-row INSERT
+(a single statement, so one implicit transaction: all commit together
+or none do) → the handler returns `{ data: { totalRows, imported,
+failed: [{ row, reason }] } }` and the UI shows the imported count plus
+every failed row with its file row number and reason. The `id` column
+is accepted (so an exported file round-trips) but ignored — the
+repository assigns fresh ids.
 
 ## Error envelope
 
@@ -173,5 +196,5 @@ the live URLs are not created yet (see `docs/VERIFICATION.md`).
 
 See `docs/PERFORMANCE.md`. Headlines: server pagination, indexes on
 department/country/level/baseSalary/email/name, analytics computed with
-grouped SQL + in-memory median on small aggregates, CSV streamed, seed
-batched (1,000 rows per insert).
+grouped SQL + in-memory median on small aggregates, CSV streamed, import
+as one multi-row INSERT (max 5 MB upload), seed batched (1,000 rows per insert).

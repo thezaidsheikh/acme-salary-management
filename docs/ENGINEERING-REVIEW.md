@@ -33,7 +33,8 @@ actually run. Every claim below points at a file or a measured number.
   employee detail, add employee, architecture docs, artifacts, README
   — followed by the later fixes (`fix/migrate-without-psql`,
   `fix/cors-origins`) and doc revisions, then the feature work
-  (`feat/salary-bands`: migration + bands module, API wiring, UI),
+  (`feat/salary-bands`: migration + bands module, API wiring, UI;
+  `feat/csv-import`: API + tests, UI + sample CSV, coverage test, docs),
   each on its own branch.
 - Tests travel with the feature they test, in the same branch, so no
   branch is merged with its feature untested.
@@ -49,7 +50,7 @@ the summary, with the exact file for each pattern.
 
 | Pattern | Where | Why it was chosen |
 |---|---|---|
-| Repository | `backend/src/modules/employees/employee.repository.ts` — `EmployeeRepository` interface, `PgEmployeeRepository`, `InMemoryEmployeeRepository` | Only the repository knows SQL. Services depend on the interface, so the database can be swapped — or faked in tests — without touching business logic. |
+| Repository | `backend/src/modules/employees/employee.repository.ts` — `EmployeeRepository` interface, `PgEmployeeRepository`, `InMemoryEmployeeRepository` | Only the repository knows SQL. Services depend on the interface, so the database can be swapped — or faked in tests — without touching business logic. The import's bulk behaviour is part of the same contract: `existingEmails` + `createMany` (one multi-row INSERT, all rows or none) live on the interface, so both implementations prove the same atomicity. |
 | Service layer | `modules/employees/employee.service.ts`, `modules/salary/salary.service.ts`, `modules/analytics/analytics.service.ts` (pure `computeAnalytics`) | A business rule lives in exactly one place. "A salary change must differ from the current salary and must be audited" is enforced in `SalaryService`, so no controller, UI or test can bypass it. |
 | Thin Controller | `modules/*/ *.controller.ts` (e.g. `modules/salary/salary.controller.ts`) | A controller only validates input, calls one service method and shapes the response. If a controller grows past that, the rule belongs in the service. |
 | Dependency Injection (constructor injection) | All four services take their repositories in the constructor, and the employees, salary and analytics services also take a `BandService`; module factories receive a `Pool \| EmployeeRepository`; `backend/src/app.ts` (composition root) builds one bands module and shares its service | A class never creates its own dependencies. Production injects the `pg` repository, tests inject the in-memory one — same code, different wiring. |
@@ -68,7 +69,9 @@ Principles applied, with one example each (full table in
 - **DRY** — departments, countries and levels are listed once in
   `frontend/src/shared/lib/constants.ts`; one error envelope in
   `backend/src/shared/http.ts`; median/average/pagination shared in
-  `backend/src/shared/analytics.ts`.
+  `backend/src/shared/analytics.ts`; one CSV column list shared by
+  export + import, and one Zod schema validating single-create and
+  every import row.
 - **KISS** — plain tables + CSS bars instead of a chart library; `pg`
   + one SQL migration instead of an ORM; no cache, no auth, no
   microservices (see §4).
@@ -87,6 +90,10 @@ Every decision below has its full reasoning in
 | Database | PostgreSQL 16 | SQLite — fine for a demo, but salary + audit needs real transactions and indexes at 10,000 rows. |
 | Data layer | `pg` + plain SQL migrations (`backend/migrations/001_init.sql`, `002_salary_bands.sql`) | Prisma — first choice, but its engine binaries could not be downloaded in this environment (`binaries.prisma.sh` returned 404, verified with curl). Same schema, same indexes, same repository interface, so only the repository changed. |
 | Salary bands | `salary_bands` table (one row per level, monthly USD min–mid–max), seeded by migration 002 | Bands hard-coded in the seed / a config file — the numbers would live in code, so HR could not change them without a deploy, and the seed and the API could drift apart. The table is the single source: the seed generates from the same values, the API reads the table. |
+| CSV upload | multer 2.5.0 (pinned), memory storage, 5 MB cap, `.csv` filename required | A hand-rolled multipart parser (fiddly, security-sensitive) or `busboy` directly (multer is the standard wrapper; the app needs nothing extra). Multer 1.x was rejected: deprecated, unpatched vulnerabilities. |
+| CSV import transaction | One multi-row INSERT (single implicit transaction); duplicates pre-checked with `existingEmails` | Row-by-row inserts in an explicit transaction (same outcome, N round-trips, a client to release); a loop without a transaction (a failure halfway leaves a partial import — the silent state the report must never hide). |
+| CSV import header | Must match the export columns exactly, in order (one shared constant) | Accepting any column order / extra columns — friendlier, but silently guessing columns is how salary data lands in the wrong field; a mapping UI is a whole feature for a problem the export already solves. |
+| Duplicate emails on import | Reported as failed rows, never a crash, never a whole-import failure | `ON CONFLICT DO NOTHING` (silently drops the row — the report could not say why); failing the whole import on one duplicate (punishes the good rows for one bad one). |
 | Compa-ratio currency | Fixed FX rates (`shared/analytics.ts`, the same rates the seed used) | Live FX — the assessment already rules out live conversion (non-deterministic, needs an external source). Fixed rates keep the ratio reproducible: a salary generated from a band converts back into that band. See `docs/TRADEOFFS.md`. |
 | Architecture | Modular monolith | Microservices — the brief says it is not looking for the most complex system. One deployable app with four modules and clear walls keeps extraction possible later (the exact path is in `docs/ARCHITECTURE.md`) without paying distributed-transaction costs now. |
 | Charts | Plain tables + CSS bars | Chart library — prettier, heavier; not needed to answer "how does the org pay people?" |
@@ -110,8 +117,8 @@ and every number below was measured, not assumed:
   afterwards (10,000 rows, max salary 521,500).
 - **CSV export:** 10,001 lines (header + 10,000 rows), correct header,
   streamed in pages so the whole export is never held in memory.
-- **Tests:** backend 131/131, 99.79% lines / 99.28% branches / 100%
-  functions; frontend 66/66, 100% lines. The gaps below 100% are
+- **Tests:** backend 155/155, 99.83% lines / 99.47% branches / 100%
+  functions; frontend 78/78, 100% lines. The gaps below 100% are
   documented honestly in `docs/TESTING.md` (a defensive fallback and
   a synthetic V8 branch — both proven unreachable, not hidden).
 - **Salary bands (23 Nov 2026):** migration 002 adds `salary_bands`
@@ -123,6 +130,15 @@ and every number below was measured, not assumed:
   6,995 / above 0 (sums to 10,000; above is 0 because the seed never
   pays over the band max). `verify-pgmem.ts` still ALL OK and the seed
   still produces exactly 10,000 employees.
+- **CSV import (23 Nov 2026):** `POST /api/employees/import` accepts
+  a `.csv` file (max 5 MB); a mixed file against the 10,000-row seed
+  in `verify-pgmem.ts` imports 2 rows, reports rows 3 (bad salary) and
+  4 (duplicate email) with reasons, and the total becomes 10,002 —
+  the seed itself still produces exactly 10,000. A > 5 MB file, a
+  non-CSV file and a wrong-header file are all 400s with nothing
+  stored. The UI shows "Imported X of Y rows" plus every failed row;
+  the sample CSV is `frontend/public/sample-employees.csv`. Full
+  numbers: backend 155 tests, frontend 78 tests, both builds clean.
 - **Builds:** `npm run build` clean in both packages; `next build`
   clean (6 routes, First Load JS 90–99 kB).
 - **No `any` types:** `grep` for `any` in `backend/src` +

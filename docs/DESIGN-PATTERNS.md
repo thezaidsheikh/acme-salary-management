@@ -10,6 +10,12 @@ gives the location, why it was used, and a short example.
   `InMemoryEmployeeRepository`; `backend/src/modules/bands/bands.repository.ts` —
   `BandRepository` (interface), `PgBandRepository`,
   `InMemoryBandRepository` (defaults to the same bands the seed uses).
+  The employees interface also carries the two bulk methods the CSV
+  import needs — `existingEmails` (one lookup for the duplicate check)
+  and `createMany` (one multi-row INSERT, all rows or none) — so the
+  import's transaction behaviour is a repository contract, not a
+  service workaround, and both implementations (Pg + InMemory) prove
+  the same atomicity in tests.
 - **Why:** only the repository knows SQL. Services and tests depend on the
   interface, so the database can change (or be faked in tests) without
   touching business logic. The bands repository is the same pattern a
@@ -36,6 +42,11 @@ gives the location, why it was used, and a short example.
   midpoint, classified below/within/above" lives in `classifySalary`,
   so the employee list, the detail page, the salary change and the
   analytics summary can never disagree about a position.
+  The import rule is the same shape: "every CSV row is validated with
+  the single-create schema, duplicates are reported, valid rows insert
+  together" lives in `EmployeeService.importEmployees`, so no
+  controller, UI or test can import a row the create endpoint would
+  reject.
 - **Example:**
   ```ts
   if (input.newSalary === current.baseSalary)
@@ -102,7 +113,7 @@ gives the location, why it was used, and a short example.
 | S | Single Responsibility | `modules/salary/` owns only salary changes; `modules/analytics/` owns only dashboard maths; `modules/bands/` owns only bands and compa-ratio. A salary rule change touches one module. |
 | O | Open/Closed | Add a new repository (e.g. a cached one) by implementing `EmployeeRepository` — `EmployeeService` does not change. |
 | L | Liskov Substitution | `InMemoryEmployeeRepository` substitutes for `PgEmployeeRepository` in every API/service test (`createApp(new InMemoryEmployeeRepository())`) with no test-code change. |
-| I | Interface Segregation | Services depend on the small `EmployeeRepository` interface (list/get/create/updateSalary/points/export), not on the whole `pg` `Pool` API. |
+| I | Interface Segregation | Services depend on the small `EmployeeRepository` interface (list/get/create/createMany/existingEmails/updateSalary/points/export), not on the whole `pg` `Pool` API. |
 | D | Dependency Inversion | `SalaryService` depends on the `EmployeeRepository` interface (imported via `modules/employees/index.ts`), never on `PgEmployeeRepository` or SQL. `EmployeeService`, `SalaryService` and `AnalyticsService` all depend on the `BandService` interface the same way — none of them knows the `salary_bands` table exists. |
 
 ## DRY — Don't Repeat Yourself
@@ -115,12 +126,23 @@ gives the location, why it was used, and a short example.
   instead of three copies of the compa-ratio maths.
 - **Example:** the country→currency map exists once in `constants.ts`;
   AddEmployee derives the currency from it instead of hard-coding it.
+  The CSV side is the same idea twice over: one column list
+  (`EMPLOYEE_CSV_COLUMNS` in `modules/employees/employee.csv.ts`) is
+  shared by the export header and the import header check, so the two
+  can never drift apart; and one Zod schema (`createEmployeeSchema`)
+  validates the single-create body and every import row, so there is
+  no second validation to keep in sync.
 
 ## KISS — Keep It Simple, Stupid
 
 - **Where:** plain tables + CSS bars instead of a chart library;
   `pg` + one SQL migration instead of an ORM; client components in
-  Next.js instead of SSR data fetching for dynamic HR data.
+  Next.js instead of SSR data fetching for dynamic HR data; a ~70-line
+  RFC 4180 CSV parser (`modules/employees/employee.csv.ts`) instead of
+  a CSV library — quoted commas, doubled quotes, CRLF and blank lines
+  are the whole problem, and a library would be a dependency for a
+  solved 70 lines. The one new dependency is multer (multipart upload),
+  the standard Express choice — see `docs/TRADEOFFS.md`.
 - **Why:** every added dependency is a failure mode and a thing to learn.
   The brief explicitly says it is not looking for the most complex system.
 

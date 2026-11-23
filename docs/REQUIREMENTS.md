@@ -18,6 +18,7 @@ Salary data for 10,000 people across multiple countries lives in spreadsheets: s
 6. **Export** — CSV export respecting current filters, streamed.
 7. **Seed** — deterministic script generating exactly 10,000 employees (fixed seed, realistic bands by level + country).
 8. **Salary bands + compa-ratio** — one pay band per level (monthly USD min–mid–max) stored in the database; every employee response shows their band, their compa-ratio (salary ÷ band midpoint) and whether they sit below, within or above the band; the dashboard shows the below/within/above counts.
+9. **CSV bulk import** — HR uploads the spreadsheet as a CSV instead of adding people one by one (the Excel-migration path: ACME currently lives on Excels, so the first load into the app must come from a file, not from 10,000 form submissions). The file uses exactly the export columns, so an exported file imports back unchanged. Every row is validated with the same rules as adding one employee; all valid rows are inserted together in one transaction, and the report names every failed row with its file row number and reason — one bad row never blocks the good ones, and a duplicate email is reported as a failed row, not a crash.
 
 ## Deliberately out of scope
 | Left out | Why |
@@ -37,4 +38,4 @@ Salary data for 10,000 people across multiple countries lives in spreadsheets: s
 - Incremental commits; production-quality code, validation, and a single error envelope.
 
 ## Success criteria
-HR can find any employee in seconds, change a salary with a reason and see it in history, read the pay picture from the dashboard, and export a filtered CSV. All of the above works from a clean checkout with `seed` + `run`, and tests pass.
+HR can find any employee in seconds, change a salary with a reason and see it in history, read the pay picture from the dashboard, export a filtered CSV, and import a CSV of new employees — seeing exactly which rows failed and why. All of the above works from a clean checkout with `seed` + `run`, and tests pass.
