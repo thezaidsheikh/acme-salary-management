@@ -20,8 +20,8 @@ Re-checked 23 Nov 2026 for the new branch-per-feature repo (rebuilt from the ver
 | 11 | CSV export respecting filters, streamed | ✅ | `GET /api/employees/export`; measured 10,001 lines (header + 10,000 rows), correct header |
 | 12 | Meaningful, fast, deterministic tests | ✅ | Backend 90 tests, frontend 62 tests; see `docs/TESTING.md` (99.74% / 100% lines) |
 | 13 | Incremental commits showing evolution | ✅ | Every feature/change/fix has its own branch off `main`, merged with `git merge --no-ff` — see `git log --graph` (no squash, no direct commits to `main` after the initial commit) |
-| 14 | Artifacts committed | ✅ | `docs/REQUIREMENTS.md`, `ARCHITECTURE.md`, `TRADEOFFS.md`, `PERFORMANCE.md`, `AI-USAGE.md`, `DESIGN-PATTERNS.md`, `TESTING.md`, this file |
-| 15 | Deployed software + video demo | ⏳ Phase 2 | Not done yet — honestly marked, not claimed. Deployment notes in `docs/ARCHITECTURE.md`; `gh` is authenticated as `thezaidsheikh`; this repo was pushed with its full branch/merge history intact |
+| 14 | Artifacts committed | ✅ | `docs/REQUIREMENTS.md`, `PLANNING.md`, `ARCHITECTURE.md`, `DESIGN-PATTERNS.md`, `ENGINEERING-REVIEW.md`, `TRADEOFFS.md`, `PERFORMANCE.md`, `TESTING.md`, this file |
+| 15 | Deployed software + video demo | ⏳ Phase 2 | Not done yet — honestly marked, not claimed. Deployment notes in `docs/ARCHITECTURE.md`; this repo was pushed with its full branch/merge history intact |
 
 ## Rework verification (measured by hand, 23 Nov 2026)
 
@@ -41,7 +41,7 @@ Re-checked 23 Nov 2026 for the new branch-per-feature repo (rebuilt from the ver
   "Salary Management" / "ACME". Backend was not running for that check —
   pages fetch client-side, so loading state + HTTP 200 is the correct
   outcome. Servers stopped afterwards; ports 3000/4000 free.
-- `git check-ignore zaid-docs/01-decisions.md` → ignored (never pushed).
+- Private interview notes are gitignored and never referenced from any public doc (verified by searching `docs/` and `README.md` for the notes folder name — no matches).
 - `grep` for `any` types in `backend/src` + `frontend/src` → none
   (only the word "any" in comments).
 
@@ -53,5 +53,6 @@ spec to "miss". The scope in `docs/REQUIREMENTS.md` (features 1–11
 above) is the candidate-defined scope, with reasons for what was left
 out. No deadline is stated in the doc; fast submissions are prioritised
 per the email. Submission is by replying to the same email with the
-repository link. See `zaid-docs/09-assessment-points-clarified.md`
-for the point-by-point clarification in simple language.
+repository link. The point-by-point evidence for every assessment
+requirement is the table above; the engineering record is in
+`docs/ENGINEERING-REVIEW.md`.

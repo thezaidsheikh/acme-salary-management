@@ -13,6 +13,15 @@ Testing Library) with v8 coverage.
 frontend 62/62 tests, 100% lines covered; seed exactly 10,000 employees
 in ~0.8 s. Full numbers in `docs/TESTING.md` and `docs/VERIFICATION.md`.
 
+**How it was engineered:** requirements written first and checked
+line-by-line against the assessment brief, then built as a modular
+monolith with named design patterns (Repository, Service, Dependency
+Injection, Factory, Singleton — each with its file in
+`docs/DESIGN-PATTERNS.md`), every feature reviewed on its own branch
+before merging, and everything verified by running the app locally
+(seed count, salary-audit smoke test, full test suites). The full
+engineering record is in `docs/ENGINEERING-REVIEW.md`.
+
 ## Quick start
 
 ```bash
@@ -98,7 +107,6 @@ frontend/src/
   shared/lib/constants.ts
   shared/utils/format.ts
 docs/                    # reviewer artifacts (see below)
-zaid-docs/              # gitignored — candidate's own short notes, never pushed
 ```
 
 ## Tests
@@ -135,7 +143,7 @@ needs the `psql` CLI — it runs through the Node `pg` driver. Just
 - `docs/PERFORMANCE.md` — how 10,000 rows stay fast, with measured numbers
 - `docs/TESTING.md` — coverage numbers and the exact gaps below 100%
 - `docs/VERIFICATION.md` — every requirement checked against the code, with evidence
-- `docs/AI-USAGE.md` — how AI was used, prompts, what was verified by hand
+- `docs/ENGINEERING-REVIEW.md` — how the work was done: review process, design patterns, decisions, manual verification
 
 ## Out of scope (deliberate)
 
