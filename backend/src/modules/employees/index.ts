@@ -6,6 +6,8 @@
  * classes live in employee.repository.ts.
  */
 export type {
+  AuditLogFilters,
+  AuditLogRow,
   EmployeeCreateData,
   EmployeeDetail,
   EmployeeFilters,

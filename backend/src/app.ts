@@ -4,6 +4,7 @@ import { createCorsOptions } from "./shared/cors.js";
 import { pool } from "./shared/db.js";
 import { errorHandler, notFoundHandler } from "./shared/http.js";
 import { createAnalyticsModule } from "./modules/analytics/index.js";
+import { createAuditModule } from "./modules/audit/index.js";
 import { createBandsModule } from "./modules/bands/index.js";
 import { createEmployeeModule, type EmployeeRepository } from "./modules/employees/index.js";
 import { createSalaryModule } from "./modules/salary/index.js";
@@ -34,6 +35,7 @@ export function createApp(repo?: EmployeeRepository): Express {
   const employees = createEmployeeModule(source, bands.service);
   const salary = createSalaryModule(source, bands.service);
   const analytics = createAnalyticsModule(source, bands.service);
+  const audit = createAuditModule(source);
 
   // Health check — no dependencies, always available.
   app.get("/api/health", (_req, res) => res.json({ data: { status: "ok" } }));
@@ -41,6 +43,7 @@ export function createApp(repo?: EmployeeRepository): Express {
   app.use("/api/employees", employees.router);
   app.use("/api/employees", salary.router);
   app.use("/api/analytics", analytics.router);
+  app.use("/api/audit-log", audit.router);
 
   app.use(notFoundHandler);
   // Single error envelope for every failure.

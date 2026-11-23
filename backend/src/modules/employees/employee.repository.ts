@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import type { ListQuery } from "./employee.validation.js";
+import type { AuditLogQuery } from "../audit/audit.validation.js";
 import type {
+  AuditLogFilters,
+  AuditLogRow,
   EmployeeCreateData,
   EmployeeFilters,
   EmployeeRow,
@@ -39,6 +42,16 @@ export interface EmployeeRepository {
   salaryPoints(): Promise<SalaryPoint[]>;
   /** Every employee matching the filters, for the CSV export. */
   allForExport(filters: EmployeeFilters): Promise<EmployeeRow[]>;
+  /**
+   * Company-wide salary-change audit log: salary_history joined with
+   * employees, newest first, paged. This is the audit module's read —
+   * the history table has exactly one owner (this repository), so the
+   * audit log reads it here instead of through a second store.
+   */
+  listAuditLog(
+    filters: AuditLogFilters,
+    q: AuditLogQuery,
+  ): Promise<{ items: AuditLogRow[]; total: number }>;
 }
 
 /**
@@ -75,6 +88,26 @@ function mapHistory(r: Record<string, unknown>): SalaryHistoryRow {
   return {
     id: r.id as string,
     employeeId: r.employee_id as string,
+    oldSalary: Number(r.old_salary),
+    newSalary: Number(r.new_salary),
+    currency: r.currency as string,
+    reason: r.reason as string,
+    changedBy: r.changed_by as string,
+    changedAt: new Date(r.changed_at as string),
+  };
+}
+
+/**
+ * Map one joined salary_history + employees row to an AuditLogRow.
+ * @param r Raw row from pg (history columns + employee name/department).
+ * @returns The camelCase audit row.
+ */
+function mapAuditLog(r: Record<string, unknown>): AuditLogRow {
+  return {
+    id: r.id as string,
+    employeeId: r.employee_id as string,
+    employeeName: `${r.first_name as string} ${r.last_name as string}`,
+    department: r.department as string,
     oldSalary: Number(r.old_salary),
     newSalary: Number(r.new_salary),
     currency: r.currency as string,
@@ -360,6 +393,76 @@ export class PgEmployeeRepository implements EmployeeRepository {
     );
     return r.rows.map(mapEmployee);
   }
+
+  /**
+   * Build the WHERE clause for the audit log, appending bound values to
+   * `params` in placeholder order. Search matches an employee id exactly
+   * (`id::text`, so a non-UUID search string never errors on the UUID
+   * column) or a first/last-name or email substring. The date range is
+   * inclusive on both ends: `from` is the start of that day, `to` the
+   * end of that day, so a change at any time on the `to` date counts.
+   * @param f Audit filters to apply.
+   * @param params Bound values, extended in place.
+   * @returns The WHERE clause, or "" when no filter is set.
+   */
+  private auditWhere(f: AuditLogFilters, params: unknown[]): string {
+    const clauses: string[] = [];
+    if (f.search) {
+      params.push(f.search);
+      const idParam = params.length;
+      params.push(`%${f.search}%`);
+      const likeParam = params.length;
+      clauses.push(
+        `(e.id::text = $${idParam} OR e.first_name ILIKE $${likeParam} OR e.last_name ILIKE $${likeParam} OR e.email ILIKE $${likeParam})`,
+      );
+    }
+    if (f.department) {
+      params.push(f.department);
+      clauses.push(`e.department = $${params.length}`);
+    }
+    if (f.from) {
+      params.push(`${f.from}T00:00:00.000Z`);
+      clauses.push(`h.changed_at >= $${params.length}`);
+    }
+    if (f.to) {
+      params.push(`${f.to}T23:59:59.999Z`);
+      clauses.push(`h.changed_at <= $${params.length}`);
+    }
+    return clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  }
+
+  /**
+   * Company-wide audit log: every salary change, newest first. The JOIN
+   * brings in the employee name and department; the history table itself
+   * stores neither. Ordering is `changed_at DESC, id DESC` — the id
+   * tie-break keeps the order deterministic when two changes share a
+   * timestamp (same-millisecond writes). The existing
+   * `idx_salary_history_employee (employee_id, changed_at)` index serves
+   * the per-employee case; the company-wide scan reads the small
+   * history table, not the 10,000-row employee table.
+   * @param f Audit filters (search/department/date range).
+   * @param q Validated audit query (page, pageSize).
+   * @returns The page of audit rows and the total matching count.
+   */
+  async listAuditLog(
+    f: AuditLogFilters,
+    q: AuditLogQuery,
+  ): Promise<{ items: AuditLogRow[]; total: number }> {
+    const params: unknown[] = [];
+    const where = this.auditWhere(f, params);
+    const offset = (q.page - 1) * q.pageSize;
+    const rows = await this.pool.query(
+      `SELECT h.id, h.employee_id, e.first_name, e.last_name, e.department, h.old_salary, h.new_salary, h.currency, h.reason, h.changed_by, h.changed_at
+       FROM salary_history h JOIN employees e ON e.id = h.employee_id ${where}
+       ORDER BY h.changed_at DESC, h.id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, q.pageSize, offset],
+    );
+    const total = await this.pool.query(
+      `SELECT COUNT(*)::int AS c FROM salary_history h JOIN employees e ON e.id = h.employee_id ${where}`,
+      params,
+    );
+    return { items: rows.rows.map(mapAuditLog), total: total.rows[0].c as number };
+  }
 }
 
 // Pattern: Repository — InMemoryEmployeeRepository is a second, swappable
@@ -563,5 +666,57 @@ export class InMemoryEmployeeRepository implements EmployeeRepository {
    */
   async allForExport(f: EmployeeFilters): Promise<EmployeeRow[]> {
     return this.applyFilters(this.employees, f);
+  }
+
+  /**
+   * Company-wide audit log (same contract as Pg): history rows joined
+   * with their employee, newest first, paged. Search matches an employee
+   * id exactly or a name/email substring (case-insensitive, matching the
+   * ILIKE behaviour of the Postgres implementation); the date range is
+   * inclusive on both ends.
+   * @param f Audit filters to apply.
+   * @param q Validated audit query (page, pageSize).
+   * @returns The page of audit rows and the total matching count.
+   */
+  async listAuditLog(
+    f: AuditLogFilters,
+    q: AuditLogQuery,
+  ): Promise<{ items: AuditLogRow[]; total: number }> {
+    const byId = new Map(this.employees.map((e) => [e.id, e]));
+    const from = f.from ? new Date(`${f.from}T00:00:00.000Z`) : null;
+    const to = f.to ? new Date(`${f.to}T23:59:59.999Z`) : null;
+    const needle = f.search?.toLowerCase();
+    const rows: AuditLogRow[] = [];
+    for (const h of this.history) {
+      const e = byId.get(h.employeeId);
+      if (!e) continue;
+      if (
+        needle &&
+        e.id !== f.search &&
+        !`${e.firstName} ${e.lastName} ${e.email}`.toLowerCase().includes(needle)
+      ) {
+        continue;
+      }
+      if (f.department && e.department !== f.department) continue;
+      if (from && h.changedAt < from) continue;
+      if (to && h.changedAt > to) continue;
+      rows.push({
+        id: h.id,
+        employeeId: h.employeeId,
+        employeeName: `${e.firstName} ${e.lastName}`,
+        department: e.department,
+        oldSalary: h.oldSalary,
+        newSalary: h.newSalary,
+        currency: h.currency,
+        reason: h.reason,
+        changedBy: h.changedBy,
+        changedAt: h.changedAt,
+      });
+    }
+    rows.sort((a, b) => +b.changedAt - +a.changedAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+    return {
+      items: rows.slice((q.page - 1) * q.pageSize, q.page * q.pageSize),
+      total: rows.length,
+    };
   }
 }

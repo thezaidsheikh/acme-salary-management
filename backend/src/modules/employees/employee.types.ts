@@ -31,6 +31,37 @@ export interface SalaryHistoryRow {
   changedAt: Date;
 }
 
+/**
+ * One company-wide audit-log row: a salary-history row joined with the
+ * employee it belongs to, so the log can say who changed whose salary.
+ * `employeeName` is "First Last"; `department` is the employee's
+ * department at read time (the history table stores no department).
+ */
+export interface AuditLogRow {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  oldSalary: number;
+  newSalary: number;
+  currency: string;
+  reason: string;
+  changedBy: string;
+  changedAt: Date;
+}
+
+/**
+ * Filters an audit-log query can apply; all optional, combined with AND.
+ * `search` matches an employee id exactly, or a name/email substring.
+ * `from`/`to` are YYYY-MM-DD dates, inclusive on both ends.
+ */
+export interface AuditLogFilters {
+  search?: string;
+  department?: string;
+  from?: string;
+  to?: string;
+}
+
 /** Filters a list/export query can apply; all optional, combined with AND. */
 export interface EmployeeFilters {
   search?: string;
