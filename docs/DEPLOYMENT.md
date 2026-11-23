@@ -2,9 +2,12 @@
 
 Status: **backend LIVE** at `https://acme-salary-api-droy.onrender.com`
 (`GET /api/health` → `{"data":{"status":"ok"}}`, verified 23 Nov 2026).
-**Seed NOT yet run** — the live database holds 0 employees. **Frontend
-not yet deployed** (Vercel URL TBD). Nothing is claimed as done until
-the smoke checks in step 5 pass on the live URLs.
+**Seed NOT yet run** — the live database holds 0 employees. The free
+workaround is built (`src/shared/seedOnStart.ts`): set
+`SEED_ON_START=true` on the Render service and it seeds itself on
+boot — see step 2. **Frontend not yet deployed** (Vercel URL TBD).
+Nothing is claimed as done until the smoke checks in step 5 pass on
+the live URLs.
 
 Target (from `docs/ARCHITECTURE.md`): backend + Postgres on **Render**,
 frontend on **Vercel**. All config for the backend side is in
@@ -82,39 +85,63 @@ How to run it once:
   — the Shell shows "Shell is not supported for free compute
   plans", and one-off jobs need the paid Starter plan. No payment
   was entered; do not upgrade just for this.
-- Planned free workaround (next step, not yet built): the backend
-  seeds/migrates itself on boot when an env flag is set — see
-  `zaid-docs/07-run-and-demo.md`. Until then, the build-command
-  method above is the way to run the migration.
+- The seed's free workaround is built, not planned (see step 2):
+  the backend seeds itself on boot when `SEED_ON_START=true`.
+  The migration itself is still run the build-command way above —
+  seed-on-start only seeds, it does not migrate.
 
-## 2. One-time seed (10,000 employees)
+## 2. One-time seed (10,000 employees) — via SEED_ON_START
 
 The seed is **deliberately NOT run on every deploy**: it wipes the
 tables, so running it on every deploy would erase any salary edits a
-recruiter made. Run it once — **but the Render Shell is NOT available
-on the free tier** ("Shell is not supported for free compute plans"),
-so the shell command below cannot be run on this service as it stands.
-The seed is still pending (live DB: 0 employees); the planned free
-workaround is the boot-time auto-seed (see step 1b). When a shell is
-available (paid plan, or a local run against the live database URL),
-the command is:
+recruiter made. **But the Render Shell is NOT available on the free
+tier** ("Shell is not supported for free compute plans"), so the seed
+cannot be run by hand against the live database. The free workaround
+(built 23 Nov 2026, `src/shared/seedOnStart.ts`): the backend seeds
+itself once, on boot, when the env var `SEED_ON_START=true`.
+
+Steps:
+1. Render dashboard → `acme-salary-api` → **Environment** → add
+   `SEED_ON_START` = `true`. Saving an env var triggers a redeploy
+   automatically.
+2. Wait for the deploy to go green, then watch the logs: after the
+   "listening" line you should see
+   `Seed on start: seeded 10000 employees.` (the seed runs in the
+   background, after the server starts listening, so the first
+   health check is never delayed by the seed).
+3. Verify:
+   `curl "https://acme-salary-api-droy.onrender.com/api/employees?page=1&pageSize=1"`
+   → `meta.total = 10000`.
+
+Why this is safe to leave on: the boot seed uses the idempotent
+seed with NO --force — it seeds only an empty table, skips when the
+table already holds exactly 10,000 rows, and refuses (logs
+`Seed on start: failed — ... Pass --force ...` and keeps serving)
+when it holds any other non-zero count. So a later redeploy never
+wipes a recruiter's salary edits, and if the free database ever
+expires and is re-created, the next boot re-seeds it automatically.
+A seed failure never crashes the server: the API keeps serving with
+whatever data is there.
+
+If you ever need pristine demo data again (e.g. after testing salary
+edits on the live app), the boot seed will NOT wipe them (see above).
+Run the seed by hand instead — from a machine that can reach the
+live database, with its URL as `DATABASE_URL`:
 
 ```bash
-cd backend && npm run seed -- --force
+cd backend && DATABASE_URL="<live-database-url>" npm run seed -- --force
 ```
 
-- The `--force` is required on a fresh database only because the
-  script is idempotent: without `--force` it skips when the table
-  already holds exactly 10,000 rows, and refuses when it holds a
-  different non-zero count (e.g. 10,001 after someone added an
-  employee). `--force` wipes and re-seeds. The seed is deterministic
-  (seed 42), so a re-seed reproduces the same 10,000 employees.
+- The `--force` is required because the script is idempotent:
+  without `--force` it skips when the table already holds exactly
+  10,000 rows, and refuses when it holds a different non-zero count
+  (e.g. 10,001 after someone added an employee). `--force` wipes and
+  re-seeds. The seed is deterministic (seed 42), so a re-seed
+  reproduces the same 10,000 employees.
 - The `npm run seed -- --force` form matters: the extra `--`
   forwards `--force` through npm to the script (`npm run seed
   --force` alone would be swallowed by npm itself).
 - Expected output ends with `Seeded 10000 employees in …s`.
-- If you ever need pristine demo data again (e.g. after testing
-  salary edits on the live app), run the same command again.
 
 ## 3. Frontend on Vercel
 
@@ -144,8 +171,10 @@ after this change:
    `render.yaml` ships with).
 2. **Manual Deploy → Deploy latest commit** (or "Restart") so the
    backend picks it up. A redeploy does **not** re-run the migration
-   (there is no pre-deploy step on the free tier — see step 1b) and
-   does **not** re-seed (see step 2).
+   (there is no pre-deploy step on the free tier — see step 1b). With
+   `SEED_ON_START=true` it attempts the seed on boot, but the
+   idempotent seed skips at 10,000 — recruiter edits are kept
+   (see step 2).
 3. Open the Vercel URL and confirm the dashboard loads with data.
    If it shows a loading/error state, see "What breaks" below.
 
@@ -187,6 +216,7 @@ submission email and `docs/VERIFICATION.md` row 15 flips from
 | Variable | Where | Value | What breaks if wrong |
 |---|---|---|---|
 | `DATABASE_URL` | Render web service (from `acme-salary-db`) | Render sets it — never paste by hand | Backend cannot start / every request 500s ("connection refused" in logs) |
+| `SEED_ON_START` | Render web service | `true` to seed an empty live DB on boot; `false`/unset locally | Live DB stays empty (0 employees) until it is set and the service redeploys |
 | `FRONTEND_URL` | Render web service | Real Vercel URL, no trailing slash | Browser blocks all API calls with a CORS error; the frontend shows loading/error forever |
 | `NEXT_PUBLIC_API_URL` | Vercel (Production) | Real Render backend URL, no trailing slash, no `/api` | Frontend calls the wrong host (or localhost) — dashboard never loads data |
 | `PORT` | Render web service | Render sets it — do not set by hand | App listens on the wrong port; Render health check fails and the deploy never goes live |
@@ -224,9 +254,16 @@ submission email and `docs/VERIFICATION.md` row 15 flips from
 - **Render Shell shows "Shell is not supported for free compute
   plans":** expected on the free tier — Shell and one-off jobs need
   the paid Starter plan. Use the build-command method (step 1b) for
-  the migration and the planned boot-time auto-seed for the seed.
+  the migration and the boot-time auto-seed (step 2) for the seed.
+- **`Seed on start: failed — ... Pass --force ...` in the logs:**
+  the live table holds a non-zero count other than 10,000 (e.g.
+  someone added an employee). The seed refused rather than wiping
+  it — re-seed by hand with `--force` (step 2) if you want pristine
+  data. The server keeps running either way.
 - **Headcount is not 10,000:** the seed did not run (or ran before
-  the migration). Run step 2 again (see the free-tier note there).
+  the migration). Check `SEED_ON_START=true` is set on the Render
+  service and the logs show `Seed on start: seeded 10000
+  employees.` — then run step 2 again.
 - **`npm run seed` locally says "Already seeded — skipping":**
   that is the idempotent seed working as designed (see
   `backend/scripts/seed.ts`). Add `-- --force` to wipe and re-seed.

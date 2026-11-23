@@ -9,7 +9,7 @@ See `docs/REQUIREMENTS.md` first — it was written before any code.
 TypeScript + Tailwind CSS 3 (frontend). Tests: Vitest (+ Supertest,
 Testing Library) with v8 coverage.
 
-**Measured (23 Nov 2026):** backend 93/93 tests, 99.74% lines covered;
+**Measured (23 Nov 2026):** backend 103/103 tests, 99.75% lines covered;
 frontend 62/62 tests, 100% lines covered; seed exactly 10,000 employees
 in ~0.8 s. Full numbers in `docs/TESTING.md` and `docs/VERIFICATION.md`.
 
@@ -99,7 +99,7 @@ backend/src/
   modules/analytics/     # dashboard maths (pure computeAnalytics)
   seed/                  # deterministic 10,000-employee generator + factory
   ../migrations/001_init.sql
-  ../tests/              # 93 tests (Vitest + Supertest + pg-mem)
+  ../tests/              # 103 tests (Vitest + Supertest + pg-mem)
 frontend/src/
   app/                   # Next.js routes: /, /employees, /employees/new, /employees/[id]
   features/employees/    # typed API client + types (single source)
@@ -112,7 +112,7 @@ docs/                    # reviewer artifacts (see below)
 ## Tests
 
 ```bash
-cd backend && npm test && npm run coverage    # 93 tests, 99.74% lines
+cd backend && npm test && npm run coverage    # 103 tests, 99.75% lines
 cd frontend && npm test && npm run coverage   # 62 tests, 100% lines
 cd backend && npx tsx scripts/verify-pgmem.ts # migration + 10k seed + HTTP smoke, no Postgres server
 ```
@@ -140,6 +140,14 @@ skips when the table already holds 10,000 employees, and refuses when
 it holds a different non-zero count. Add `-- --force` to wipe and
 re-seed: `npm run seed -- --force`.
 
+**Live database is empty (0 employees) on Render?** Render's free tier
+has no Shell, so the seed cannot be run by hand there. The backend
+seeds itself on boot when `SEED_ON_START=true` — set it on the Render
+web service (it triggers a redeploy) and watch the logs for
+`Seed on start: seeded 10000 employees.` It only seeds an empty table,
+skips at 10,000, and never crashes the server if it fails — full steps
+in `docs/DEPLOYMENT.md` step 2.
+
 ## Docs for the reviewer
 
 - `docs/REQUIREMENTS.md` — one-page requirements (written first)
@@ -157,5 +165,6 @@ re-seed: `npm run seed -- --force`.
 Payroll/tax, auth/RBAC, leave/attendance, live FX conversion, AI chatbot
 — reasons in `docs/REQUIREMENTS.md`. Deployment + video demo are phase 2:
 backend is live at `https://acme-salary-api-droy.onrender.com`
-(health verified); seed, frontend and video demo are still pending —
-see `render.yaml` + `docs/DEPLOYMENT.md`.
+(health verified); the live seed is still pending — the boot-time
+auto-seed is built, set `SEED_ON_START=true` on Render (see
+`docs/DEPLOYMENT.md` step 2); frontend and video demo are still pending.
