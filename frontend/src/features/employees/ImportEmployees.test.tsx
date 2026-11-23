@@ -63,6 +63,22 @@ describe("ImportEmployees", () => {
     expect(onImported).not.toHaveBeenCalled();
   });
 
+  it("shows a generic message when the upload throws a non-Error value", async () => {
+    importMock.mockRejectedValue("network down");
+    render(<ImportEmployees onImported={onImported} />);
+    pickFile();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Import failed: Import failed");
+    expect(onImported).not.toHaveBeenCalled();
+  });
+
+  it("clicking the Import CSV button opens the file picker", () => {
+    render(<ImportEmployees onImported={onImported} />);
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, "click");
+    fireEvent.click(screen.getByRole("button", { name: "Import CSV" }));
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    clickSpy.mockRestore();
+  });
+
   it("shows Importing… and disables the button while the upload is in flight", async () => {
     let resolveImport!: (r: ImportReport) => void;
     importMock.mockImplementation(
