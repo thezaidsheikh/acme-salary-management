@@ -1,3 +1,5 @@
+import type { BandSummary } from "../bands/index.js";
+
 /** Full response of GET /api/analytics/summary. */
 export interface AnalyticsSummary {
   totalEmployees: number;
@@ -8,6 +10,8 @@ export interface AnalyticsSummary {
   byCountry: { name: string; count: number; averageUsd: number; medianUsd: number }[];
   byLevel: { name: string; count: number; averageUsd: number; medianUsd: number }[];
   distributionUsd: { bucket: string; count: number }[];
+  /** Employees below / within / above their level's salary band. */
+  bandSummary: BandSummary;
   topEarners: {
     name: string;
     jobTitle: string;

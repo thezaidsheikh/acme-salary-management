@@ -1,3 +1,5 @@
+import type { EmployeeBandInfo } from "../bands/index.js";
+
 /** One employee row as the rest of the app sees it (camelCase, app types). */
 export interface EmployeeRow {
   id: string;
@@ -51,3 +53,9 @@ export type EmployeeCreateData = Omit<EmployeeRow, "id" | "createdAt" | "updated
 
 /** An employee plus their salary history, as GET /api/employees/:id returns. */
 export type EmployeeWithHistory = EmployeeRow & { salaryHistory: SalaryHistoryRow[] };
+
+/** An employee plus their salary-band info, as list/create return. */
+export type EmployeeWithBand = EmployeeRow & EmployeeBandInfo;
+
+/** An employee with history plus band info, as GET /api/employees/:id returns. */
+export type EmployeeDetail = EmployeeWithHistory & EmployeeBandInfo;

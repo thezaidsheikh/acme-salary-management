@@ -1,5 +1,6 @@
 import type { Pool } from "pg";
 import type { Router as ExpressRouter } from "express";
+import { createBandsModule, type BandService } from "../bands/index.js";
 import { PgEmployeeRepository } from "../employees/employee.repository.js";
 import type { EmployeeRepository } from "../employees/index.js";
 import { AnalyticsService } from "./analytics.service.js";
@@ -23,13 +24,19 @@ function resolveRepository(poolOrRepo: Pool | EmployeeRepository): EmployeeRepos
 /**
  * Build the analytics module: service and router.
  * @param poolOrRepo Postgres pool, or an EmployeeRepository (tests).
+ * @param bandsService Band logic; when omitted, built from the same
+ *   pool/repo, so the module works standalone.
  * @returns The wired `{ router, service }` for the composition root.
  */
-export function createAnalyticsModule(poolOrRepo: Pool | EmployeeRepository): {
+export function createAnalyticsModule(
+  poolOrRepo: Pool | EmployeeRepository,
+  bandsService?: BandService,
+): {
   router: ExpressRouter;
   service: AnalyticsService;
 } {
   const repository = resolveRepository(poolOrRepo);
-  const service = new AnalyticsService(repository);
+  const bands = bandsService ?? createBandsModule(poolOrRepo).service;
+  const service = new AnalyticsService(repository, bands);
   return { router: createAnalyticsRouter(service), service };
 }

@@ -1,4 +1,5 @@
 import { toUsd } from "../../shared/analytics.js";
+import { ApiError } from "../../shared/errors.js";
 import type { BandRepository } from "./bands.repository.js";
 import type {
   BandPosition,
@@ -21,6 +22,20 @@ import type {
  */
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+/**
+ * The fail-fast error for a level with no band: the database was not
+ * migrated (migration 002 seeds all six levels), so returning employees
+ * without band fields would silently hide a broken deploy.
+ * @param level Level name with no band.
+ * @returns An ApiError with status 500.
+ */
+function missingBandError(level: string): ApiError {
+  return new ApiError(
+    500,
+    `No salary band for level "${level}" — salary_bands is missing this level (run migration 002).`,
+  );
 }
 
 /**
@@ -107,6 +122,33 @@ export class BandService {
       const band = byLevel.get(e.level);
       if (!band) return null;
       return { band, ...classifySalary(toUsd(e.baseSalary, e.currency), band) };
+    });
+  }
+
+  /**
+   * Band info for one employee, failing fast when the level has no band.
+   * @param employee The employee's level, salary and currency.
+   * @returns The band, compa-ratio and position.
+   * @throws ApiError 500 when the level has no band.
+   */
+  async enrichRequired(employee: BandEmployeeInput): Promise<EmployeeBandInfo> {
+    const info = await this.enrich(employee);
+    if (!info) throw missingBandError(employee.level);
+    return info;
+  }
+
+  /**
+   * Band info for many employees with a single band lookup, failing fast
+   * when any level has no band (same reason as enrichRequired).
+   * @param employees Employees to enrich.
+   * @returns One band info per employee, in the same order.
+   * @throws ApiError 500 when any level has no band.
+   */
+  async enrichManyRequired(employees: BandEmployeeInput[]): Promise<EmployeeBandInfo[]> {
+    const infos = await this.enrichMany(employees);
+    return infos.map((info, i) => {
+      if (!info) throw missingBandError(employees[i].level);
+      return info;
     });
   }
 

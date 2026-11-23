@@ -1,12 +1,16 @@
+import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { LEVEL_BANDS_USD } from "../src/seed/seedData";
+import { LEVEL_BANDS_USD, generateEmployees } from "../src/seed/seedData";
 import { applyMigrations } from "../scripts/migrate";
 import { memPool } from "./pgmem";
+import { createApp } from "../src/app";
 import { BandService, classifySalary } from "../src/modules/bands/bands.service";
 import {
   InMemoryBandRepository,
   PgBandRepository,
 } from "../src/modules/bands/bands.repository";
+import { InMemoryEmployeeRepository, PgEmployeeRepository } from "../src/modules/employees/employee.repository";
+import { EmployeeService } from "../src/modules/employees/employee.service";
 import type { SalaryBand } from "../src/modules/bands/bands.types";
 
 /** The Senior band from LEVEL_BANDS_USD: [4500, 7500], mid 6000. */
@@ -97,6 +101,55 @@ describe("BandService (in-memory repo)", () => {
   });
 });
 
+describe("BandService fail-fast (empty band store)", () => {
+  it("getById/list throw 500 when the level has no band (unmigrated DB)", async () => {
+    const repo = new InMemoryEmployeeRepository();
+    repo.employees = generateEmployees(1, 42).map((e, i) => ({
+      ...e, id: `emp-${i}`, employmentStatus: "Active", createdAt: new Date(), updatedAt: new Date(),
+    }));
+    const service = new EmployeeService(repo, new BandService(new InMemoryBandRepository([])));
+    await expect(service.getById("emp-0")).rejects.toMatchObject({
+      status: 500,
+      message: expect.stringContaining("No salary band"),
+    });
+    await expect(
+      service.list({ page: 1, pageSize: 10, sortBy: "lastName", sortOrder: "asc" }),
+    ).rejects.toMatchObject({ status: 500 });
+  });
+});
+
+describe("bands API (pg-mem, real migrations)", () => {
+  it("GET /api/bands, employee detail and analytics bandSummary over Postgres", async () => {
+    const pool = memPool();
+    try {
+      await applyMigrations(pool);
+      // One Senior in India on ₹498,000/mo: 498000 / 83 = $6,000 exactly —
+      // the Senior midpoint, so compa-ratio 1.00 and within.
+      await pool.query(
+        `INSERT INTO employees (id, first_name, last_name, email, department, country, currency, job_title, level, date_of_joining, base_salary)
+         VALUES ('11111111-1111-1111-1111-111111111111','Priya','Sharma','priya@example.com','Engineering','India','INR','Engineer','Senior','2020-01-01',498000)`,
+      );
+      const app = createApp(new PgEmployeeRepository(pool));
+      const bands = await request(app).get("/api/bands");
+      expect(bands.status).toBe(200);
+      expect(bands.body.data).toHaveLength(6);
+      const detail = await request(app).get("/api/employees/11111111-1111-1111-1111-111111111111");
+      expect(detail.status).toBe(200);
+      expect(detail.body.data).toMatchObject({
+        band: { level: "Senior", minSalary: 4500, midSalary: 6000, maxSalary: 7500 },
+        compaRatio: 1,
+        bandPosition: "within",
+      });
+      const summary = await request(app).get("/api/analytics/summary");
+      expect(summary.status).toBe(200);
+      expect(summary.body.data.bandSummary).toEqual({ below: 0, within: 1, above: 0 });
+      const missing = await request(app).get("/api/bands/Intern");
+      expect(missing.status).toBe(404);
+    } finally {
+      await pool.end();
+    }
+  });
+});
 describe("PgBandRepository (pg-mem, real migrations)", () => {
   it("reads the six seeded bands from salary_bands", async () => {
     const pool = memPool();
