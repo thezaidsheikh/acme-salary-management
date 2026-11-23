@@ -34,6 +34,9 @@ const priya: Employee = {
   dateOfJoining: "2022-03-01T00:00:00.000Z",
   employmentStatus: "active",
   baseSalary: 150000,
+  band: { level: "Senior", minSalary: 4500, midSalary: 6000, maxSalary: 7500 },
+  compaRatio: 0.3,
+  bandPosition: "below",
 };
 
 const rahul: Employee = {
@@ -46,6 +49,9 @@ const rahul: Employee = {
   country: "USA",
   currency: "USD",
   baseSalary: 8000,
+  // $8,000 is over the Senior $7,500 maximum.
+  compaRatio: 1.33,
+  bandPosition: "above",
 };
 
 function meta(overrides: Partial<PageMeta> = {}): PageMeta {

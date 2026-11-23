@@ -29,6 +29,10 @@ const created: Employee = {
   dateOfJoining: "2026-11-23",
   employmentStatus: "active",
   baseSalary: 120000,
+  // ₹120,000 / 83 ≈ $1,446 — below the Junior $1,500 minimum.
+  band: { level: "Junior", minSalary: 1500, midSalary: 2000, maxSalary: 2500 },
+  compaRatio: 0.72,
+  bandPosition: "below",
 };
 
 /** Fills the form with valid values (overrides per test). */

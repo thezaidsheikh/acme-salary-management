@@ -25,6 +25,9 @@ function makeAnalytics(overrides: Partial<Analytics> = {}): Analytics {
     byCountry: [{ name: "India", count: 6000, averageUsd: 3000, medianUsd: 2600 }],
     byLevel: [{ name: "Senior", count: 3000, averageUsd: 6000, medianUsd: 5500 }],
     distributionUsd: [{ bucket: "$0–2k", count: 1500 }],
+    // Real band counts for the 10,000-employee seed (below 3005,
+    // within 6995, above 0 — the seed never pays over the band max).
+    bandSummary: { below: 3005, within: 6995, above: 0 },
     topEarners: [
       {
         name: "Asha Verma",
@@ -73,6 +76,20 @@ describe("Dashboard page", () => {
     // "Engineering" appears twice: the department bar and the outlier row.
     expect(screen.getAllByText("Engineering")).toHaveLength(2);
     expect(screen.getByText("Payroll by currency (per month, local currency)")).toBeInTheDocument();
+  });
+
+  it("renders the salary band position counts", async () => {
+    analyticsMock.mockResolvedValue(
+      makeAnalytics({ bandSummary: { below: 120, within: 8500, above: 45 } }),
+    );
+    render(<DashboardPage />);
+    expect(await screen.findByText("Salary band position")).toBeInTheDocument();
+    expect(screen.getByText("Below band")).toBeInTheDocument();
+    expect(screen.getByText("120")).toBeInTheDocument();
+    expect(screen.getByText("Within band")).toBeInTheDocument();
+    expect(screen.getByText("8,500")).toBeInTheDocument();
+    expect(screen.getByText("Above band")).toBeInTheDocument();
+    expect(screen.getByText("45")).toBeInTheDocument();
   });
 
   it("shows a dash for the largest payroll when no currency rows exist", async () => {
