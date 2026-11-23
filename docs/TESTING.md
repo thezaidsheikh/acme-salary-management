@@ -14,19 +14,36 @@ cd frontend && npm run coverage     # same, with a coverage report
 cd backend && npx tsx scripts/verify-pgmem.ts   # migration + 10k seed + HTTP smoke, no Postgres server
 ```
 
-## Coverage — measured 23 Nov 2026 (re-run after the rework)
+## Coverage — measured 23 Nov 2026 (re-measured after the CSV-import feature)
 
 | Package | Tests | Lines | Branches | Functions | Statements |
 |---|---|---|---|---|---|
-| Backend | 131 passed, 15 files | 99.79% | 99.28% | 100% | 99.79% |
-| Frontend (Next.js) | 66 passed, 9 files | 100% | 100% | 100% | 100% |
+| Backend | 155 passed, 17 files | 99.83% | 99.47% | 100% | 99.83% |
+| Frontend (Next.js) | 78 passed, 10 files | 100% | 100% | 100% | 100% |
 
 Thresholds are enforced at 90% in both `vitest.config.ts` files — the
 run fails if coverage drops below them.
 
 ## What is tested
 
-**Backend (131 tests):**
+**Backend (155 tests):**
+- CSV import — `parseCsv` (quoted commas, doubled quotes, CRLF + lone
+  CR, BOM, blank lines kept as `[]`, unterminated quote to EOF);
+  `EmployeeService.importEmployees` (all-valid file imports every row
+  with fresh ids; mixed file imports only the good rows and reports
+  each bad row with its exact file row number + reason — bad salary,
+  bad level, bad date, too few columns, duplicate inside the file,
+  duplicate already stored; blank lines skipped without shifting later
+  row numbers; all-rows-bad and all-duplicates files import nothing;
+  empty file and wrong header rejected; header-only file imports 0;
+  an exported file round-trips, its `id` column ignored);
+  `POST /api/employees/import` (multipart upload, uppercase `.CSV`
+  accepted; non-CSV / missing file / wrong field name / over-5 MB file
+  all 400 with no rows stored); repository `createMany` atomicity —
+  Pg over pg-mem and InMemory both insert nothing when one row in the
+  batch is a duplicate — plus `existingEmails` on both; the
+  controller's defensive non-Error upload branch via a mocked-multer
+  test (`tests/importController.test.ts`).
 - Validation — every Zod schema error path (bad email/level/date,
   salary ≤ 0, missing/short reason, page 0, pageSize > 100, bad sort).
 - Analytics maths — median (odd/even/empty/single), average, `toUsd`
@@ -64,8 +81,10 @@ run fails if coverage drops below them.
 - Salary rules — same salary rejected, unknown employee 404, duplicate
   email 400, PATCH creates exactly one history row with old + new.
 - Repository — InMemory all methods (filters, sorts asc/desc, pagination
-  edges, missing ids); Pg repository against pg-mem (real migration +
-  real SQL: create, list, get, salary update with history).
+  edges, missing ids) plus `existingEmails`/`createMany` (whole batch,
+  empty batch, duplicate stored or in-batch inserts nothing); Pg repository against pg-mem (real migration +
+  real SQL: create, list, get, salary update with history, `createMany`
+  atomicity, `existingEmails`).
 - HTTP/app — asyncHandler error forwarding, error envelope (ApiError vs
   500), unknown route 404, CSV export content + empty export, POST
   create success.
@@ -77,21 +96,35 @@ run fails if coverage drops below them.
   gets no Allow-Origin header; a custom `FRONTEND_URL` list (commas,
   trailing slashes stripped) is honoured alongside the defaults.
 
-**Frontend (66 tests):**
+**Frontend (78 tests):**
 - Utils — `formatMoney`/`formatDate` (including unknown-currency
   fallback), constants.
-- Components — `StatCard`, `BarList` (rows, widths, empty list).
-- API client — all endpoints, error-envelope handling, export URL.
+- Components — `StatCard`, `BarList` (rows, widths, empty list);
+  `ImportEmployees` (button + sample-CSV link; picked file uploads and
+  the report shows imported count + failed rows with row numbers;
+  all-imported message with no failed list; backend error shown, list
+  not refreshed; non-Error throw shows the generic message; uploading
+  state disables the button; cancelled picker uploads nothing;
+  clicking the button opens the file picker).
+- API client — all endpoints, error-envelope handling, export URL,
+  `importEmployees` posts the file as FormData (no JSON Content-Type)
+  and returns the report; error paths fall back to "Failed to import CSV".
 - Pages (mocked API) — Dashboard loading/error/loaded, including the
   salary-band position counts; Employees loading/empty/error, filters,
-  sort, pagination buttons; EmployeeDetail loading/error, every
+  sort, pagination buttons, import controls present and list refetched
+  after a successful import; EmployeeDetail loading/error, every
   salary-form validation error, success path, and the salary-band card
   for all three positions (Below / Within / Above badge); AddEmployee
   validation errors and success navigation.
 
 ## Gaps — exactly what is below 100% and why
 
-**Backend (99.79% lines):**
+**Backend (99.83% lines):**
+- `src/modules/employees/` is 100% lines / 100% functions across the
+  board — `employee.csv.ts`, `employee.service.ts` and
+  `employee.controller.ts` are fully covered, including the import's
+  error mapping (the defensive non-Error arm is covered by the
+  mocked-multer controller test, not by HTTP).
 - `src/modules/bands/` is 100% across the board (the factory's
   BandRepository passthrough branch is covered by a dedicated test).
 - `src/seed/employeeFactory.ts` 96.82% lines / 91.66% branches —
@@ -99,8 +132,8 @@ run fails if coverage drops below them.
   genuinely unreachable. `LEVEL_WEIGHTS` sums to exactly 1.0 and
   `rng()` is in [0, 1), so an index is always picked inside the loop.
   Defensive code only.
-- `src/modules/employees/employee.repository.ts` 100% lines / 98.38%
-  branches — line 238, the synthetic V8 branch on `} finally {` in
+- `src/modules/employees/employee.repository.ts` 100% lines / 98.82%
+  branches — line 327, the synthetic V8 branch on `} finally {` in
   `PgEmployeeRepository.updateSalary`. Both paths execute
   `client.release()` (success via pg-mem COMMIT; failure via a fake-pool
   test asserting release after UPDATE + ROLLBACK both throw). V8 never

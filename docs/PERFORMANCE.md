@@ -10,7 +10,11 @@ Never move 10,000 rows to the browser or hold them all in server memory when a p
 4. **Analytics in one pass** — one `SELECT department, country, level, base_salary, currency` (5 small columns, 10k rows) then medians/buckets computed in memory. At 10k rows this is milliseconds; the alternative (a query per group) would be ~30 round-trips.
 5. **CSV export streams** — rows are written to the response in pages of 1,000; the whole export is never held in memory at once.
 6. **Seed is batched** — 10 batches of 1,000 multi-row inserts, not 10,000 single inserts.
-7. **Frontend debounces search** (250 ms) so typing does not fire a request per keystroke.
+7. **CSV import is one multi-row INSERT** — all valid rows in a single
+   statement (one implicit transaction), not one insert per row; the
+   upload itself is capped at 5 MB so the file held in memory stays
+   bounded (~45,000 rows max per file).
+8. **Frontend debounces search** (250 ms) so typing does not fire a request per keystroke.
 
 ## What was deliberately not done
 - No Redis/cache layer: at 10k rows Postgres answers these queries directly; a cache would add a service and stale-data risk for no measurable gain.

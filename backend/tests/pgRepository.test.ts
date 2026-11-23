@@ -100,12 +100,42 @@ describe("PgEmployeeRepository (pg-mem, real migration)", () => {
     await expect(failing.updateSalary(row.id, 200, "Raise", "HR")).rejects.toThrow("connection lost");
     expect(released).toBe(true); // finally always releases the client, even on failure
   });
+  it("existingEmails returns only the emails already stored", async () => {
+    expect(await repo.existingEmails([])).toEqual(new Set());
+    expect(
+      await repo.existingEmails(["priya.sharma@acme.com", "nobody@acme.com"]),
+    ).toEqual(new Set(["priya.sharma@acme.com"]));
+    expect(await repo.existingEmails(["nobody@acme.com"])).toEqual(new Set());
+  });
+  it("createMany inserts the whole batch in one transaction", async () => {
+    const before = (await repo.list({}, q({ pageSize: 100 }))).total;
+    const created = await repo.createMany([
+      { ...priya, firstName: "Asha", lastName: "Patel", email: "asha.patel@acme.com", baseSalary: 120000 },
+      { ...priya, firstName: "Rohan", lastName: "Mehta", email: "rohan.mehta@acme.com", baseSalary: 90000, level: "Mid" },
+    ]);
+    expect(created).toHaveLength(2);
+    expect((await repo.list({}, q({ pageSize: 100 }))).total).toBe(before + 2);
+    expect(await repo.createMany([])).toEqual([]);
+  });
+  it("createMany rolls the whole batch back when one row is a duplicate", async () => {
+    const before = (await repo.list({}, q({ pageSize: 100 }))).total;
+    await expect(
+      repo.createMany([
+        { ...priya, firstName: "New", lastName: "One", email: "new.one@acme.com" },
+        { ...priya, firstName: "Dup", lastName: "Two", email: "rahul.verma@acme.com" },
+      ]),
+    ).rejects.toThrow(/unique/i);
+    // Nothing from the batch was stored: no partial silent state.
+    expect((await repo.list({}, q({ pageSize: 100 }))).total).toBe(before);
+    expect((await repo.list({ search: "new.one@acme.com" }, q())).total).toBe(0);
+  });
   it("salaryPoints and allForExport return all rows", async () => {
+    const total = (await repo.list({}, q({ pageSize: 100 }))).total;
     const points = await repo.salaryPoints();
-    expect(points).toHaveLength(2);
+    expect(points).toHaveLength(total);
     expect(points[0]).toEqual(expect.objectContaining({ department: "Engineering", currency: "INR" }));
-    expect((await repo.allForExport({})).length).toBe(2);
-    expect((await repo.allForExport({ country: "India" })).length).toBe(2);
+    expect((await repo.allForExport({})).length).toBe(total);
+    expect((await repo.allForExport({ country: "India" })).length).toBe(total);
     expect((await repo.allForExport({ country: "USA" })).length).toBe(0);
   });
 });

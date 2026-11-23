@@ -3,10 +3,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import EmployeesPage from "./page";
 import { api, type Employee, type PageMeta } from "@/features/employees/api";
 
-// Mock only listEmployees; exportUrl stays real so the CSV link is exercised.
+// Mock listEmployees and importEmployees; exportUrl stays real so the CSV link is exercised.
 vi.mock("@/features/employees/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/features/employees/api")>();
-  return { ...actual, api: { ...actual.api, listEmployees: vi.fn() } };
+  return { ...actual, api: { ...actual.api, listEmployees: vi.fn(), importEmployees: vi.fn() } };
 });
 
 // next/link needs no router context in this test — render a plain anchor.
@@ -19,6 +19,7 @@ vi.mock("next/link", () => ({
 }));
 
 const listMock = vi.mocked(api.listEmployees);
+const importMock = vi.mocked(api.importEmployees);
 
 const priya: Employee = {
   id: "emp-1",
@@ -152,5 +153,20 @@ describe("Employees page", () => {
     // payload), so assert the request, not the rendered page label.
     fireEvent.click(screen.getByRole("button", { name: "Previous" }));
     await waitFor(() => expect(listMock).toHaveBeenCalledWith(expect.objectContaining({ page: 1 })));
+  });
+
+  it("shows the import controls and refetches the list after a successful import", async () => {
+    listMock.mockResolvedValue({ data: [priya], meta: meta({ total: 1 }) });
+    importMock.mockResolvedValue({ totalRows: 2, imported: 2, failed: [] });
+    render(<EmployeesPage />);
+    await screen.findByText("Priya Sharma");
+    expect(screen.getByRole("button", { name: "Import CSV" })).toBeInTheDocument();
+    expect(screen.getByText("Download sample CSV").getAttribute("href")).toBe("/sample-employees.csv");
+    const callsBefore = listMock.mock.calls.length;
+    const file = new File(["id,firstName\n,Asha"], "import.csv", { type: "text/csv" });
+    fireEvent.change(screen.getByLabelText("CSV file to import"), { target: { files: [file] } });
+    expect(await screen.findByText("Imported 2 of 2 rows.")).toBeInTheDocument();
+    // The import bumped the refresh key, so the list was fetched again.
+    await waitFor(() => expect(listMock.mock.calls.length).toBeGreaterThan(callsBefore));
   });
 });

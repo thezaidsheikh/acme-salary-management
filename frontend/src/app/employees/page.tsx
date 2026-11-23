@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type Employee, type PageMeta } from "@/features/employees/api";
+import ImportEmployees from "@/features/employees/ImportEmployees";
 import { COUNTRIES, DEPARTMENTS, LEVELS } from "@/shared/lib/constants";
 import { formatMoney } from "@/shared/utils/format";
 
@@ -29,6 +30,8 @@ export default function EmployeesPage() {
   const [sortBy, setSortBy] = useState("lastName");
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
+  /** Bumped after a CSV import so the list re-fetches and shows the new rows. */
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -49,7 +52,7 @@ export default function EmployeesPage() {
         .finally(() => setLoading(false));
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [search, department, country, level, sortBy, sortOrder, page]);
+  }, [search, department, country, level, sortBy, sortOrder, page, refreshKey]);
 
   /** Wraps a filter setter so changing a filter also resets to page 1. */
   const resetPage =
@@ -79,6 +82,12 @@ export default function EmployeesPage() {
           Export CSV
         </a>
       </div>
+      <ImportEmployees
+        onImported={() => {
+          setPage(1);
+          setRefreshKey((k) => k + 1);
+        }}
+      />
       <div className="flex flex-wrap gap-2">
         <input
           className="rounded-lg border px-3 py-2 text-sm"

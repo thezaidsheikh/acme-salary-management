@@ -1,6 +1,6 @@
-import type { Analytics, BandPosition, BandSummary, Employee, PageMeta, SalaryBand, SalaryHistory } from "./types";
+import type { Analytics, BandPosition, BandSummary, Employee, ImportReport, PageMeta, SalaryBand, SalaryHistory } from "./types";
 
-export type { Analytics, BandPosition, BandSummary, Employee, PageMeta, SalaryBand, SalaryHistory } from "./types";
+export type { Analytics, BandPosition, BandSummary, Employee, ImportReport, ImportRowFailure, PageMeta, SalaryBand, SalaryHistory } from "./types";
 
 /** Base URL of the salary-management backend (public env var, same default as before). */
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -70,4 +70,22 @@ export const api = {
   /** Builds the CSV-export URL for the current list filters. */
   exportUrl: (params: Record<string, string>) =>
     `${BASE}/api/employees/export?${new URLSearchParams(params).toString()}`,
+
+  /**
+   * Uploads a CSV file for bulk import and returns the per-row report
+   * (imported count + every failed row). Sends multipart FormData — no
+   * JSON Content-Type header, so the browser sets the boundary itself.
+   */
+  importEmployees: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return fetch(`${BASE}/api/employees/import`, { method: "POST", body: form }).then(async (r) => {
+      const body = (await r.json()) as {
+        data: ImportReport;
+        error?: { message?: string };
+      };
+      if (!r.ok) throw new Error(body.error?.message ?? "Failed to import CSV");
+      return body.data;
+    });
+  },
 };

@@ -9,8 +9,8 @@ See `docs/REQUIREMENTS.md` first — it was written before any code.
 TypeScript + Tailwind CSS 3 (frontend). Tests: Vitest (+ Supertest,
 Testing Library) with v8 coverage.
 
-**Measured (23 Nov 2026):** backend 131/131 tests, 99.79% lines covered;
-frontend 66/66 tests, 100% lines covered; seed exactly 10,000 employees
+**Measured (23 Nov 2026):** backend 155/155 tests, 99.83% lines covered;
+frontend 78/78 tests, 100% lines covered; seed exactly 10,000 employees
 in ~0.8 s. Full numbers in `docs/TESTING.md` and `docs/VERIFICATION.md`.
 
 **How it was engineered:** requirements written first and checked
@@ -53,13 +53,14 @@ Order: `docs/requirements` → `chore/scaffold` → `feat/seed-10000` →
 `feat/shared-ui` → `feat/dashboard` → `feat/employees-list` →
 `feat/employee-detail` → `feat/add-employee` → `docs/architecture` →
 `docs/artifacts` → `docs/readme` → `feat/salary-bands` (migration +
-bands module, API wiring, UI). Tests travel with the feature they
+bands module, API wiring, UI) → `feat/csv-import` (API + tests, UI +
+sample CSV, coverage test, docs). Tests travel with the feature they
 test, in the same branch.
 
 ## Architecture (one paragraph)
 
 A modular monolith: the backend is one deployable Express app made of
-four modules — `employees` (list/search/pagination/detail/create/export),
+four modules — `employees` (list/search/pagination/detail/create/export/import),
 `salary` (salary-change rule + audit), `analytics` (dashboard numbers)
 and `bands` (salary bands + compa-ratio, shared by the other three) —
 plus a `shared` kernel (pool, errors, HTTP helpers, maths). Each module
@@ -87,6 +88,7 @@ Next.js 14 (frontend/) ──HTTP/JSON──► Express modular monolith (backen
 - `GET /api/bands/:level` — one band (404 for an unknown level)
 - `GET /api/analytics/summary` — includes `bandSummary` (below / within / above counts)
 - `GET /api/employees/export?format=csv` (streamed, respects filters)
+- `POST /api/employees/import` (multipart CSV upload, max 5 MB, `.csv` only) — returns `{ data: { totalRows, imported, failed: [{ row, reason }] } }`; every row is validated with the same rules as single create, all valid rows insert in one transaction, and every failed row (bad value, duplicate email) is named with its file row number and reason. Sample CSV: `frontend/public/sample-employees.csv`
 
 Every response uses one envelope: success `{ data, meta? }`, error
 `{ error: { code, message, details? } }`.
@@ -98,14 +100,14 @@ backend/src/
   app.ts                 # composition root (wiring only)
   index.ts               # bootstrap (listen only)
   shared/                # db, errors, http, analytics — cross-cutting only
-  modules/employees/     # types, repository, validation, service, controller, routes, factory
+  modules/employees/     # types, repository, validation, csv, service, controller, routes, factory
   modules/salary/        # salary-change rule + audit
   modules/analytics/     # dashboard maths (pure computeAnalytics)
   modules/bands/         # salary bands + compa-ratio (pure classifySalary)
   seed/                  # deterministic 10,000-employee generator + factory
   ../migrations/001_init.sql
   ../migrations/002_salary_bands.sql
-  ../tests/              # 131 tests (Vitest + Supertest + pg-mem)
+  ../tests/              # 155 tests (Vitest + Supertest + pg-mem)
 frontend/src/
   app/                   # Next.js routes: /, /employees, /employees/new, /employees/[id]
   features/employees/    # typed API client + types (single source)
@@ -118,8 +120,8 @@ docs/                    # reviewer artifacts (see below)
 ## Tests
 
 ```bash
-cd backend && npm test && npm run coverage    # 131 tests, 99.79% lines
-cd frontend && npm test && npm run coverage   # 66 tests, 100% lines
+cd backend && npm test && npm run coverage    # 155 tests, 99.83% lines
+cd frontend && npm test && npm run coverage   # 78 tests, 100% lines
 cd backend && npx tsx scripts/verify-pgmem.ts # migration + 10k seed + HTTP smoke, no Postgres server
 ```
 

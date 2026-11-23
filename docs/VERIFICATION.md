@@ -18,7 +18,7 @@ Re-checked 23 Nov 2026 for the new branch-per-feature repo (rebuilt from the ver
 | 9 | Add employee (validated create) | ✅ | `POST /api/employees`; `frontend/src/app/employees/new/page.tsx` |
 | 10 | Analytics: headcount, payroll, avg/median, by dept/country/level, distribution, top 10, outliers | ✅ | `GET /api/analytics/summary` (`modules/analytics/`); measured on 10,000 rows: avg USD 4,555, median USD 3,587, 10 depts, 8 countries; band summary below 3,005 / within 6,995 / above 0 (see § Salary bands below) |
 | 11 | CSV export respecting filters, streamed | ✅ | `GET /api/employees/export`; measured 10,001 lines (header + 10,000 rows), correct header |
-| 12 | Meaningful, fast, deterministic tests | ✅ | Backend 131 tests, frontend 66 tests; see `docs/TESTING.md` (99.79% / 100% lines) |
+| 12 | Meaningful, fast, deterministic tests | ✅ | Backend 155 tests, frontend 78 tests; see `docs/TESTING.md` (99.83% / 100% lines) |
 | 13 | Incremental commits showing evolution | ✅ | Every feature/change/fix has its own branch off `main`, merged with `git merge --no-ff` — see `git log --graph` (no squash, no direct commits to `main` after the initial commit) |
 | 14 | Artifacts committed | ✅ | `docs/REQUIREMENTS.md`, `PLANNING.md`, `ARCHITECTURE.md`, `DESIGN-PATTERNS.md`, `ENGINEERING-REVIEW.md`, `TRADEOFFS.md`, `PERFORMANCE.md`, `TESTING.md`, this file |
 | 15 | Deployed software + video demo | ⏳ Phase 2 (backend live) | Backend LIVE at `https://acme-salary-api-droy.onrender.com` — `GET /api/health` returns `{"data":{"status":"ok"}}` (verified 23 Nov 2026). Seed NOT yet run on the live DB (0 employees — Render Shell needs a paid plan; the free workaround is BUILT on branch `feat/seed-on-start`: set `SEED_ON_START=true` on the Render service and it seeds itself on boot, then verify the live total is 10,000), frontend not yet deployed (Vercel URL TBD), video demo not yet recorded. Blueprint/deployment fixes in `render.yaml` + `docs/DEPLOYMENT.md` (free tier: no pre-deploy command; start command `node backend/dist/src/index.js`; migration now idempotent). The row flips to ✅ only when the live smoke checks in `docs/DEPLOYMENT.md` step 5 pass. |
@@ -42,12 +42,32 @@ looks wrong.
 | UI | ✅ | Detail page shows band min–mid–max, compa-ratio and a Below/Within/Above badge (all three positions tested); dashboard shows the three counts |
 | Seed still exactly 10,000 | ✅ | `npx tsx scripts/verify-pgmem.ts` — ALL OK (migration, seed 10,000, health, search, analytics, PATCH audit, CSV) |
 
+## CSV bulk import — feature added after the core build (23 Nov 2026)
+
+Candidate-added feature (branch `feat/csv-import`, four commits:
+API + tests, UI + sample CSV, coverage test, docs), not an assessment
+requirement — the brief leaves the feature list to the candidate, and
+ACME currently lives on Excels, so the first load into the app has to
+come from a file, not from 10,000 form submissions.
+
+| Check | Status | Evidence |
+|---|---|---|
+| `POST /api/employees/import` (multipart, field `file`) | ✅ | `modules/employees/employee.controller.ts` (`importCsv` + multer: memory storage, 5 MB cap, `.csv` only); `employee.routes.ts` |
+| Same validation as single create, no second schema | ✅ | `EmployeeService.importEmployees` calls `createEmployeeSchema.safeParse` per row (`employee.service.ts`); a row with `baseSalary: abc` fails with `baseSalary: Expected number, received nan` |
+| Header must be exactly the export columns | ✅ | One shared constant `EMPLOYEE_CSV_COLUMNS` (`employee.csv.ts`) drives the export header and the import check; wrong header → 400 naming the expected header; an exported file round-trips |
+| All valid rows in one transaction, no partial silent state | ✅ | `createMany` is one multi-row INSERT (single implicit transaction) in `PgEmployeeRepository` and check-then-insert in `InMemoryEmployeeRepository`; a duplicate mid-batch inserts nothing (tests on both, pg-mem + in-memory) |
+| Per-row report: every failed row by number + reason | ✅ | Response `{ data: { totalRows, imported, failed: [{ row, reason }] } }`; mixed-file test asserts failed rows [3, 4, 5, 6, 7, 9] with reasons; `imported + failed.length` always equals `totalRows` |
+| Duplicate emails reported, never a crash | ✅ | In-file duplicate → "Duplicate email in file"; already stored → "An employee with this email already exists" (one `existingEmails` lookup before inserting) |
+| Upload limits enforced | ✅ | Non-CSV file, missing file, wrong field name and > 5 MB file all → 400 with no rows stored (API tests, incl. a ~6.6 MB file) |
+| UI: Import button + report + sample CSV | ✅ | `ImportEmployees.tsx` on the Employees page (file picker, "Imported X of Y rows", failed-row list, list refreshes after import); `frontend/public/sample-employees.csv` linked from the UI (exact export columns, 3 rows) |
+| Seed still exactly 10,000 | ✅ | `npx tsx scripts/verify-pgmem.ts` — ALL OK (migration, seed 10,000, health, search, analytics, PATCH audit, CSV export, CSV import: mixed file imports 2, reports rows 3–4, total becomes 10,002) |
+
 ## Rework verification (measured by hand, 23 Nov 2026)
 
-- Backend: `npm run build` zero errors; `npm test` 131/131; `npm run coverage`
-  99.79% lines / 99.28% branches / 100% functions.
+- Backend: `npm run build` zero errors; `npm test` 155/155; `npm run coverage`
+  99.83% lines / 99.47% branches / 100% functions.
 - Frontend: `npm run typecheck` zero errors; `npm run build` clean
-  (6 routes, First Load JS 90–99 kB); `npm test` 66/66; coverage 100%.
+  (6 routes, First Load JS 90–99 kB); `npm test` 78/78; coverage 100%.
 - Seed: exactly 10,000 employees in 0.7 s; `COUNT(DISTINCT email)` = 10,000;
   search "Priya" = 132; min salary 1,000, max 521,500.
 - Backend smoke (built server, real Postgres 16): health 200 (~12 ms);

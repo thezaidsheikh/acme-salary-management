@@ -12,8 +12,11 @@ export type {
   EmployeeRow,
   EmployeeWithBand,
   EmployeeWithHistory,
+  ImportReport,
+  ImportRowFailure,
   SalaryHistoryRow,
   SalaryPoint,
 } from "./employee.types.js";
+export { EMPLOYEE_CSV_COLUMNS, MAX_IMPORT_FILE_BYTES, parseCsv } from "./employee.csv.js";
 export type { EmployeeRepository } from "./employee.repository.js";
 export { createEmployeeModule } from "./employee.factory.js";
