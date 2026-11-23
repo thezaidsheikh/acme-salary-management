@@ -18,7 +18,7 @@ cd backend && npx tsx scripts/verify-pgmem.ts   # migration + 10k seed + HTTP sm
 
 | Package | Tests | Lines | Branches | Functions | Statements |
 |---|---|---|---|---|---|
-| Backend | 93 passed, 12 files | 99.74% | 99.01% | 100% | 99.74% |
+| Backend | 103 passed, 14 files | 99.75% | 99.06% | 100% | 99.75% |
 | Frontend (Next.js) | 62 passed, 9 files | 100% | 100% | 100% | 100% |
 
 Thresholds are enforced at 90% in both `vitest.config.ts` files — the
@@ -26,7 +26,7 @@ run fails if coverage drops below them.
 
 ## What is tested
 
-**Backend (93 tests):**
+**Backend (103 tests):**
 - Validation — every Zod schema error path (bad email/level/date,
   salary ≤ 0, missing/short reason, page 0, pageSize > 100, bad sort).
 - Analytics maths — median (odd/even/empty/single), average, `toUsd`
@@ -37,6 +37,12 @@ run fails if coverage drops below them.
 - Seed idempotency — seeds on an empty DB, skips when already seeded
   at 10,000, re-seeds with `--force`, refuses to wipe a partially
   filled table without `--force` (pg-mem, real migration + real SQL).
+- Seed-on-start — does nothing unless `SEED_ON_START=true`; seeds
+  exactly 10,000 on an empty DB and skips on the second boot; refuses
+  a partially filled table without wiping it; never throws when the
+  database is unreachable (logs and returns the error); and a real
+  HTTP server answers `/api/health` while the seed runs in the
+  background (`src/shared/seedOnStart.ts`, 100% covered).
 - Salary rules — same salary rejected, unknown employee 404, duplicate
   email 400, PATCH creates exactly one history row with old + new.
 - Repository — InMemory all methods (filters, sorts asc/desc, pagination
@@ -65,7 +71,7 @@ run fails if coverage drops below them.
 
 ## Gaps — exactly what is below 100% and why
 
-**Backend (99.73% lines):**
+**Backend (99.75% lines):**
 - `src/seed/employeeFactory.ts` 96.82% lines / 91.66% branches —
   lines 45–46, the `pickWeighted` fallback `return weights.length - 1`:
   genuinely unreachable. `LEVEL_WEIGHTS` sums to exactly 1.0 and
