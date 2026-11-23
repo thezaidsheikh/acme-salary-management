@@ -1,7 +1,24 @@
 -- Salary Management — ACME org. PostgreSQL 16.
 -- Current salary on Employee for fast reads; SalaryHistory is the audit truth.
-CREATE TYPE level AS ENUM ('Junior','Mid','Senior','Lead','Manager','Director');
-CREATE TYPE employment_status AS ENUM ('Active','OnLeave');
+--
+-- IDEMPOTENT: the whole file is safe to run more than once (e.g. re-running
+-- `npm run migrate` on a deploy). CREATE TYPE has no IF NOT EXISTS in
+-- Postgres, so each enum is created inside a DO block that checks pg_type
+-- first. Tables and indexes use IF NOT EXISTS. Schema, indexes and data
+-- are unchanged — only the two type guards were added (Nov 2026: the
+-- second run used to fail with "type 'level' already exists").
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'level') THEN
+    CREATE TYPE level AS ENUM ('Junior','Mid','Senior','Lead','Manager','Director');
+  END IF;
+END $$;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'employment_status') THEN
+    CREATE TYPE employment_status AS ENUM ('Active','OnLeave');
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS employees (
   id UUID PRIMARY KEY,

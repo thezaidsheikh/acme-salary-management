@@ -4,12 +4,22 @@
 # How to use it:
 #   1. In Render: New → Blueprint → connect this GitHub repo.
 #      Render creates the web service + database below.
-#   2. After the first deploy, seed once from the Render shell:
+#   2. After the first deploy, seed once (see docs/DEPLOYMENT.md for
+#      the free-tier method — the Render shell needs a paid plan):
 #        cd backend && npm run seed -- --force
-#      (The seed is NOT in preDeployCommand on purpose: it TRUNCATEs,
-#      so running it on every deploy would wipe any salary edits a
-#      recruiter made. The script itself is idempotent — without
-#      --force it skips when 10,000 employees already exist.)
+#      (The seed is NOT run on every deploy on purpose: it wipes the
+#      tables, so running it on every deploy would erase any salary
+#      edits a recruiter made. The script itself is idempotent —
+#      without --force it skips when 10,000 employees already exist.)
+#
+# Free-tier gotcha (found during the live deploy, Nov 2026):
+# Render's free plan does NOT support pre-deploy commands — a Blueprint
+# with preDeployCommand is rejected ("Pre-deploy command is not
+# supported for free tier services") and shows no Apply button. So
+# there is NO pre-deploy step here: the migration is a one-time step,
+# run once after the first deploy (docs/DEPLOYMENT.md explains how).
+# The migration file itself is idempotent (DO-block guards on the two
+# enum types, IF NOT EXISTS everywhere else), so re-running it is safe.
 #   3. Deploy the frontend on Vercel (root directory `frontend`,
 #      NEXT_PUBLIC_API_URL = the Render backend URL below), then set
 #      FRONTEND_URL here to the real Vercel URL and redeploy the backend.
@@ -26,10 +36,10 @@ services:
     # --include=dev: tsx (migrate/seed) and tsc (build) are devDependencies;
     # without this flag Render's production install would skip them.
     buildCommand: cd backend && npm install --include=dev && npm run build
-    startCommand: cd backend && node dist/src/index.js
-    # Runs on every deploy, before the new code starts: creates the
-    # tables/indexes. Safe to re-run — the migration is idempotent.
-    preDeployCommand: cd backend && npm run migrate
+    # Runs from the REPO ROOT: the build output is backend/dist, so
+    # `node dist/src/index.js` fails with "Cannot find module" — the
+    # live service runs `node backend/dist/src/index.js` (Nov 2026).
+    startCommand: node backend/dist/src/index.js
     envVars:
       - key: DATABASE_URL
         fromDatabase:

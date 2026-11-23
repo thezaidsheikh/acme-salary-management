@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { newDb } from "pg-mem";
 import { applyMigration, MIGRATION_FILE, MIGRATION_PATH } from "../scripts/migrate";
-
-/** A throwaway pg-mem pool — no real Postgres, no psql CLI needed. */
-function memPool() {
-  const db = newDb();
-  const { Pool } = db.adapters.createPg();
-  return new Pool() as unknown as import("pg").Pool;
-}
+import { memPool } from "./pgmem";
 
 describe("migrate (pg-mem, no real Postgres, no psql)", () => {
   it("creates employees + salary_history from the real 001_init.sql", async () => {

@@ -2,16 +2,16 @@
 // + seed + HTTP smoke test against pg-mem (pg-compatible, in-memory).
 // Usage: npx tsx scripts/verify-pgmem.ts
 import { readFileSync } from "node:fs";
-import { newDb } from "pg-mem";
+import { memPool } from "../tests/pgmem.js";
 import { generateEmployees } from "../src/seed/seedData.js";
 import { createApp } from "../src/app.js";
 import { PgEmployeeRepository } from "../src/modules/employees/employee.repository.js";
 
 async function main() {
   const started = Date.now();
-  const db = newDb();
-  const { Pool } = db.adapters.createPg();
-  const pool = new Pool() as unknown as import("pg").Pool;
+  // Shared pg-mem setup (tests/pgmem.ts): registers the minimal plpgsql
+  // shim the migration's DO blocks need — pg-mem has no plpgsql itself.
+  const pool = memPool();
   const migration = readFileSync(new URL("../migrations/001_init.sql", import.meta.url), "utf8");
   await pool.query(migration);
   console.log("migration: ok");

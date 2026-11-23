@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { newDb } from "pg-mem";
+import { memPool } from "./pgmem";
 import { generateEmployees, mulberry32 } from "../src/seed/seedData";
 import { createSeedEmployee } from "../src/seed/employeeFactory";
 import { applyMigration } from "../scripts/migrate";
@@ -69,9 +69,7 @@ describe("createSeedEmployee factory", () => {
 describe("seed idempotency (pg-mem, no real Postgres)", () => {
   /** Fresh in-memory DB with the real migration applied. */
   async function seededDb() {
-    const db = newDb();
-    const { Pool } = db.adapters.createPg();
-    const pool = new Pool() as unknown as import("pg").Pool;
+    const pool = memPool();
     await applyMigration(pool);
     return pool;
   }
