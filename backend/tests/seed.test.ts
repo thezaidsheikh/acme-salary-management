@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { newDb } from "pg-mem";
 import { generateEmployees, mulberry32 } from "../src/seed/seedData";
 import { createSeedEmployee } from "../src/seed/employeeFactory";
+import { applyMigration } from "../scripts/migrate";
+import { countEmployees, seedEmployees, SEED_TOTAL } from "../scripts/seed";
 
 describe("seed determinism", () => {
   it("same seed => same employees", () => {
@@ -61,4 +64,62 @@ describe("createSeedEmployee factory", () => {
     expect(managers.length).toBeGreaterThan(0);
     expect(managers.every((m) => /^emp-([0-4]?\d{1,2}|500)$/.test(m) && Number(m.replace("emp-", "")) < 500)).toBe(true);
   });
+});
+
+describe("seed idempotency (pg-mem, no real Postgres)", () => {
+  /** Fresh in-memory DB with the real migration applied. */
+  async function seededDb() {
+    const db = newDb();
+    const { Pool } = db.adapters.createPg();
+    const pool = new Pool() as unknown as import("pg").Pool;
+    await applyMigration(pool);
+    return pool;
+  }
+
+  it("seeds on an empty DB, skips when already seeded, re-seeds with --force", async () => {
+    const pool = await seededDb();
+    try {
+      // Small total keeps this fast; the full 10,000 is covered below.
+      const first = await seedEmployees(pool, false, 200);
+      expect(first).toEqual({ seeded: true, count: 200 });
+      const second = await seedEmployees(pool, false, 200);
+      expect(second).toEqual({ seeded: false, count: 200 });
+      expect(await countEmployees(pool)).toBe(200);
+      const forced = await seedEmployees(pool, true, 200);
+      expect(forced).toEqual({ seeded: true, count: 200 });
+    } finally {
+      await pool.end();
+    }
+  }, 120_000);
+
+  it("refuses to wipe a partially filled table without --force", async () => {
+    const pool = await seededDb();
+    try {
+      await seedEmployees(pool, false, 200);
+      // Remove exactly one employee (fetch its id first: pg-mem
+      // mishandles DELETE ... WHERE id IN (SELECT ... LIMIT 1)).
+      const { rows } = await pool.query("SELECT id FROM employees LIMIT 1");
+      await pool.query("DELETE FROM employees WHERE id = $1", [rows[0].id]);
+      expect(await countEmployees(pool)).toBe(199);
+      await expect(seedEmployees(pool, false, 200)).rejects.toThrow(/Pass --force/);
+      expect(await countEmployees(pool)).toBe(199);
+      const forced = await seedEmployees(pool, true, 200);
+      expect(forced).toEqual({ seeded: true, count: 200 });
+    } finally {
+      await pool.end();
+    }
+  }, 120_000);
+
+  it("seeds exactly SEED_TOTAL (10,000) on an empty DB", async () => {
+    expect(SEED_TOTAL).toBe(10_000);
+    const pool = await seededDb();
+    try {
+      const result = await seedEmployees(pool);
+      expect(result).toEqual({ seeded: true, count: 10_000 });
+      // And a second run skips instead of wiping.
+      expect(await seedEmployees(pool)).toEqual({ seeded: false, count: 10_000 });
+    } finally {
+      await pool.end();
+    }
+  }, 180_000);
 });
