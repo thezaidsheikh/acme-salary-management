@@ -1,6 +1,6 @@
-import type { Analytics, Employee, PageMeta, SalaryHistory } from "./types";
+import type { Analytics, BandPosition, BandSummary, Employee, PageMeta, SalaryBand, SalaryHistory } from "./types";
 
-export type { Analytics, Employee, PageMeta, SalaryHistory } from "./types";
+export type { Analytics, BandPosition, BandSummary, Employee, PageMeta, SalaryBand, SalaryHistory } from "./types";
 
 /** Base URL of the salary-management backend (public env var, same default as before). */
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";

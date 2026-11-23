@@ -25,6 +25,10 @@ const employee: Employee = {
   dateOfJoining: "2022-03-01T00:00:00.000Z",
   employmentStatus: "active",
   baseSalary: 150000,
+  // ₹150,000 / 83 ≈ $1,807 — below the Senior $4,500 minimum.
+  band: { level: "Senior", minSalary: 4500, midSalary: 6000, maxSalary: 7500 },
+  compaRatio: 0.3,
+  bandPosition: "below",
 };
 
 describe("api client", () => {

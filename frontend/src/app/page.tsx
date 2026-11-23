@@ -44,6 +44,17 @@ export default function DashboardPage() {
         />
       </div>
       <section className="rounded-xl border bg-white p-4 shadow-sm">
+        <h2 className="mb-3 font-semibold">Salary band position</h2>
+        <div className="grid grid-cols-3 gap-4">
+          <StatCard label="Below band" value={a.bandSummary.below.toLocaleString()} sub="paid under the band minimum" />
+          <StatCard label="Within band" value={a.bandSummary.within.toLocaleString()} sub="inside their level's band" />
+          <StatCard label="Above band" value={a.bandSummary.above.toLocaleString()} sub="paid over the band maximum" />
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          Each salary is compared to its level's band, converted to USD at fixed rates for comparison only.
+        </p>
+      </section>
+      <section className="rounded-xl border bg-white p-4 shadow-sm">
         <h2 className="mb-3 font-semibold">Payroll by currency (per month, local currency)</h2>
         <table className="w-full text-sm">
           <thead>

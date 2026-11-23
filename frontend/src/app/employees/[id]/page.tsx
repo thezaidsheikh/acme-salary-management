@@ -2,11 +2,23 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { api, type Employee, type SalaryHistory } from "@/features/employees/api";
+import { api, type BandPosition, type Employee, type SalaryHistory } from "@/features/employees/api";
 import { formatDate, formatMoney } from "@/shared/utils/format";
 
 /** An employee together with their salary-change history. */
 type EmployeeWithHistory = Employee & { salaryHistory: SalaryHistory[] };
+
+/**
+ * Badge label + colour for a band position: below is amber (needs a
+ * review), within is green, above is indigo (paid over the band).
+ * @param position Where the salary sits against its band.
+ * @returns The badge label and Tailwind classes.
+ */
+function bandBadge(position: BandPosition): { label: string; className: string } {
+  if (position === "below") return { label: "Below band", className: "bg-amber-100 text-amber-800" };
+  if (position === "above") return { label: "Above band", className: "bg-indigo-100 text-indigo-800" };
+  return { label: "Within band", className: "bg-emerald-100 text-emerald-800" };
+}
 
 /**
  * Employee detail page: profile header, salary edit form (validated: whole
@@ -52,6 +64,8 @@ export default function EmployeeDetailPage() {
     }
   };
 
+  const badge = bandBadge(emp.bandPosition);
+
   return (
     <div className="space-y-6">
       <div>
@@ -65,6 +79,26 @@ export default function EmployeeDetailPage() {
           {emp.email} · Joined {formatDate(emp.dateOfJoining)} · {emp.employmentStatus}
         </p>
       </div>
+      <section className="rounded-xl border bg-white p-4 shadow-sm">
+        <h2 className="mb-3 font-semibold">Salary band — {emp.level}</h2>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+          <span>
+            Band (USD / month):{" "}
+            <strong>
+              ${emp.band.minSalary.toLocaleString()} – ${emp.band.midSalary.toLocaleString()} – $
+              {emp.band.maxSalary.toLocaleString()}
+            </strong>
+          </span>
+          <span>
+            Compa-ratio: <strong>{emp.compaRatio.toFixed(2)}</strong>
+          </span>
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          Compa-ratio is salary ÷ band midpoint: 1.00 means exactly at midpoint. Bands are in USD per month; salaries
+          are converted to USD at a fixed rate for comparison only — payroll is always paid in local currency.
+        </p>
+      </section>
       <div className="grid gap-4 md:grid-cols-2">
         <section className="rounded-xl border bg-white p-4 shadow-sm">
           <h2 className="mb-3 font-semibold">Edit salary</h2>

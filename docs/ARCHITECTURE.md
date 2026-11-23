@@ -7,9 +7,9 @@
 │ Next.js 14       │ ─────────────► │ Express + TypeScript         │ ──────────► │ PostgreSQL 16│
 │ (App Router)     │                │ Modular monolith             │             │ Employee +   │
 │ Dashboard /      │                │ modules/employees · salary · │             │ SalaryHistory│
-│ Employees /      │                │ analytics + shared kernel    │             └──────────────┘
-│ Detail / Add     │                └──────────────────────────────┘
-└──────────────────┘
+│ Employees /      │                │ analytics · bands + shared   │             │ + SalaryBand │
+│ Detail / Add     │                │ kernel                       │             └──────────────┘
+└──────────────────┘                └──────────────────────────────┘
 ```
 
 The same diagram as Mermaid (renderable in GitHub):
@@ -21,11 +21,17 @@ flowchart LR
     API --> EMP[modules/employees<br/>list · detail · create · export]
     API --> SAL[modules/salary<br/>salary change + audit]
     API --> ANA[modules/analytics<br/>computeAnalytics]
+    API --> BAN[modules/bands<br/>bands · compa-ratio]
+    EMP --> BAN
+    SAL --> BAN
+    ANA --> BAN
     EMP --> SH[shared kernel<br/>db · errors · http · analytics]
     SAL --> EMP
     ANA --> EMP
-    EMP --> DB[(PostgreSQL 16<br/>employees<br/>salary_history)]
+    BAN --> SH
+    EMP --> DB[(PostgreSQL 16<br/>employees<br/>salary_history<br/>salary_bands)]
     SAL --> DB
+    BAN --> DB
 ```
 
 One repo, two packages, one Postgres, one deployable backend. No auth
@@ -38,9 +44,10 @@ microservice without a rewrite (see "Extracting a microservice" below).
 
 | Area | Contents | Owns |
 |---|---|---|
-| `modules/employees/` | `employee.types`, `employee.repository` (interface + Pg + InMemory), `employee.validation` (Zod), `employee.service`, `employee.controller`, `employee.routes`, `employee.factory`, `index` (public API) | Employee list/search/filter/sort/pagination, detail, create, CSV export |
-| `modules/salary/` | `salary.service`, `salary.controller`, `salary.routes`, `salary.factory`, `index` | Salary change rule + audit (via the employees repository interface) |
-| `modules/analytics/` | `analytics.types`, `analytics.service` (pure `computeAnalytics`), `analytics.controller`, `analytics.routes`, `analytics.factory`, `index` | Dashboard numbers: averages, medians, breakdowns, outliers |
+| `modules/employees/` | `employee.types`, `employee.repository` (interface + Pg + InMemory), `employee.validation` (Zod), `employee.service`, `employee.controller`, `employee.routes`, `employee.factory`, `index` (public API) | Employee list/search/filter/sort/pagination, detail, create, CSV export — every employee returned carries band info (band, compa-ratio, position) via the bands service |
+| `modules/salary/` | `salary.service`, `salary.controller`, `salary.routes`, `salary.factory`, `index` | Salary change rule + audit (via the employees repository interface); the updated employee carries band info |
+| `modules/analytics/` | `analytics.types`, `analytics.service` (pure `computeAnalytics`), `analytics.controller`, `analytics.routes`, `analytics.factory`, `index` | Dashboard numbers: averages, medians, breakdowns, outliers, band summary |
+| `modules/bands/` | `bands.types`, `bands.repository` (interface + Pg + InMemory), `bands.service` (pure `classifySalary`), `bands.controller`, `bands.routes`, `bands.factory`, `index` (public API) | Salary bands (one row per level, monthly USD min–mid–max), compa-ratio maths, band position; the one service every other module consumes for band data |
 | `shared/` | `db` (pool factory), `errors` (ApiError), `http` (asyncHandler, error/not-found handlers), `analytics` (median, average, FX, pagination meta) | Only truly cross-cutting code — nothing module-specific |
 | `seed/` | `seedData` (deterministic generator), `employeeFactory` (Factory) | The 10,000-employee seed |
 | `app.ts` | Composition root only | Wiring: pool → module factories → routers; no business logic, no SQL |
@@ -64,7 +71,11 @@ microservice without a rewrite (see "Extracting a microservice" below).
    knows SQL.
 4. **Dependencies flow one way:** routes → controller → service →
    repository → `pg` pool. The shared kernel is imported by modules, never
-   the reverse.
+   the reverse. One exception, by design: the employees, salary and
+   analytics services all consume the bands module's `BandService`
+   (injected by `app.ts`, which builds one bands module and shares it),
+   so every response agrees on the same band numbers. Bands never
+   imports the other modules — the dependency is one-way.
 
 ## Frontend (`frontend/src`, Next.js 14 App Router)
 
@@ -73,12 +84,32 @@ microservice without a rewrite (see "Extracting a microservice" below).
   `'use client'` components that fetch from the backend at runtime — the
   data is dynamic HR data, so there is no SSR data fetching; Next.js is
   used for file routing, layouts, metadata and production conventions.
+  The dashboard shows the salary-band position counts (below / within /
+  above); the detail page shows the employee's band (min–mid–max),
+  compa-ratio and a position badge.
 - `features/employees/` — the typed API client (`api.ts`) + types
   (single source of truth for `Employee`, `Analytics`, …).
 - `shared/components/` — `StatCard`, `BarList`.
 - `shared/lib/constants.ts` — departments, countries + currencies, levels
   (single source; pages import it instead of re-listing — DRY).
 - `shared/utils/format.ts` — money/date formatting.
+
+## API endpoints
+
+| Method + path | Module | Returns |
+|---|---|---|
+| `GET /api/health` | — | `{ data: { status: "ok" } }` |
+| `GET /api/employees?...` | employees | Paged employees (`{ data, meta }`); each row carries `band` (min/mid/max USD), `compaRatio` and `bandPosition` |
+| `GET /api/employees/:id` | employees | Employee + `salaryHistory` + band info |
+| `POST /api/employees` | employees | Created employee + band info (201) |
+| `PATCH /api/employees/:id/salary` | salary | `{ employee, history }`; employee carries band info |
+| `GET /api/employees/export?format=csv` | employees | Streamed CSV of the filtered list |
+| `GET /api/bands` | bands | All six level bands, Junior first |
+| `GET /api/bands/:level` | bands | One band, or 404 for an unknown level |
+| `GET /api/analytics/summary` | analytics | Headcount, payroll, averages/medians, breakdowns, distribution, top earners, outliers, `bandSummary` |
+
+Every response uses one envelope: success `{ data, meta? }`, error
+`{ error: { code, message, details? } }`.
 
 ## Request flow (example)
 

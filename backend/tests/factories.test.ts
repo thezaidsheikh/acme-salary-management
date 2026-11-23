@@ -1,8 +1,8 @@
-import { readFileSync } from "node:fs";
 import express from "express";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { memPool } from "./pgmem";
+import { applyMigrations } from "../scripts/migrate";
 import { createApp } from "../src/app";
 import { createEmployeeModule } from "../src/modules/employees/index";
 import { createSalaryModule } from "../src/modules/salary/index";
@@ -15,7 +15,7 @@ import { InMemoryEmployeeRepository } from "../src/modules/employees/employee.re
 describe("module factories with a Pool", () => {
   it("build working routers over pg-mem (migration applied)", async () => {
     const pool = memPool();
-    await pool.query(readFileSync(new URL("../migrations/001_init.sql", import.meta.url), "utf8"));
+    await applyMigrations(pool);
 
     const app = express();
     app.use(express.json());

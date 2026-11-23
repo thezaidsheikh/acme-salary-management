@@ -4,6 +4,7 @@ import { createCorsOptions } from "./shared/cors.js";
 import { pool } from "./shared/db.js";
 import { errorHandler, notFoundHandler } from "./shared/http.js";
 import { createAnalyticsModule } from "./modules/analytics/index.js";
+import { createBandsModule } from "./modules/bands/index.js";
 import { createEmployeeModule, type EmployeeRepository } from "./modules/employees/index.js";
 import { createSalaryModule } from "./modules/salary/index.js";
 
@@ -26,12 +27,17 @@ export function createApp(repo?: EmployeeRepository): Express {
   app.use(express.json());
 
   const source = repo ?? pool;
-  const employees = createEmployeeModule(source);
-  const salary = createSalaryModule(source);
-  const analytics = createAnalyticsModule(source);
+  // Bands are built once and shared: the employee, salary and analytics
+  // services all enrich/classify through this one BandService, so every
+  // response agrees on the same band numbers.
+  const bands = createBandsModule(source);
+  const employees = createEmployeeModule(source, bands.service);
+  const salary = createSalaryModule(source, bands.service);
+  const analytics = createAnalyticsModule(source, bands.service);
 
   // Health check — no dependencies, always available.
   app.get("/api/health", (_req, res) => res.json({ data: { status: "ok" } }));
+  app.use("/api/bands", bands.router);
   app.use("/api/employees", employees.router);
   app.use("/api/employees", salary.router);
   app.use("/api/analytics", analytics.router);

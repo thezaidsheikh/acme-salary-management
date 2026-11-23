@@ -32,7 +32,9 @@ actually run. Every claim below points at a file or a measured number.
   coverage, Next.js setup, shared UI, dashboard, employees list,
   employee detail, add employee, architecture docs, artifacts, README
   — followed by the later fixes (`fix/migrate-without-psql`,
-  `fix/cors-origins`) and doc revisions, each on its own branch.
+  `fix/cors-origins`) and doc revisions, then the feature work
+  (`feat/salary-bands`: migration + bands module, API wiring, UI),
+  each on its own branch.
 - Tests travel with the feature they test, in the same branch, so no
   branch is merged with its feature untested.
 - Each branch was reviewed before merging: the diff, the tests it
@@ -50,8 +52,8 @@ the summary, with the exact file for each pattern.
 | Repository | `backend/src/modules/employees/employee.repository.ts` — `EmployeeRepository` interface, `PgEmployeeRepository`, `InMemoryEmployeeRepository` | Only the repository knows SQL. Services depend on the interface, so the database can be swapped — or faked in tests — without touching business logic. |
 | Service layer | `modules/employees/employee.service.ts`, `modules/salary/salary.service.ts`, `modules/analytics/analytics.service.ts` (pure `computeAnalytics`) | A business rule lives in exactly one place. "A salary change must differ from the current salary and must be audited" is enforced in `SalaryService`, so no controller, UI or test can bypass it. |
 | Thin Controller | `modules/*/ *.controller.ts` (e.g. `modules/salary/salary.controller.ts`) | A controller only validates input, calls one service method and shapes the response. If a controller grows past that, the rule belongs in the service. |
-| Dependency Injection (constructor injection) | All three services take `EmployeeRepository` in the constructor; module factories receive a `Pool \| EmployeeRepository`; `backend/src/app.ts` (composition root) wires them | A class never creates its own dependencies. Production injects the `pg` repository, tests inject the in-memory one — same code, different wiring. |
-| Factory | Module factories (`createEmployeeModule`, `createSalaryModule`, `createAnalyticsModule` in `modules/*/ *.factory.ts`) and `backend/src/seed/employeeFactory.ts` (`createSeedEmployee`) | Building a seed employee involves email-uniqueness, level weighting, salary bands and manager links. The factory hides that construction so the generator stays a short loop. |
+| Dependency Injection (constructor injection) | All four services take their repositories in the constructor, and the employees, salary and analytics services also take a `BandService`; module factories receive a `Pool \| EmployeeRepository`; `backend/src/app.ts` (composition root) builds one bands module and shares its service | A class never creates its own dependencies. Production injects the `pg` repository, tests inject the in-memory one — same code, different wiring. |
+| Factory | Module factories (`createEmployeeModule`, `createSalaryModule`, `createAnalyticsModule`, `createBandsModule` in `modules/*/ *.factory.ts`) and `backend/src/seed/employeeFactory.ts` (`createSeedEmployee`) | Building a seed employee involves email-uniqueness, level weighting, salary bands and manager links. The factory hides that construction so the generator stays a short loop. |
 | Singleton | `backend/src/shared/db.ts` — one shared `pg` Pool (`export const pool`), created once and reused by every module | One connection pool for the whole app: connections are bounded and shared instead of every module opening its own. |
 
 Principles applied, with one example each (full table in
@@ -83,8 +85,10 @@ Every decision below has its full reasoning in
 |---|---|---|
 | UI framework | Next.js 14 (App Router) + React 18 | Vite SPA — faster dev start, but no file routing/layouts, and the assessment's Next.js option was explicitly chosen. The first build was Vite; it was migrated to Next.js in a dedicated rework, not patched over. |
 | Database | PostgreSQL 16 | SQLite — fine for a demo, but salary + audit needs real transactions and indexes at 10,000 rows. |
-| Data layer | `pg` + plain SQL migration (`backend/migrations/001_init.sql`) | Prisma — first choice, but its engine binaries could not be downloaded in this environment (`binaries.prisma.sh` returned 404, verified with curl). Same schema, same indexes, same repository interface, so only the repository changed. |
-| Architecture | Modular monolith | Microservices — the brief says it is not looking for the most complex system. One deployable app with three modules and clear walls keeps extraction possible later (the exact path is in `docs/ARCHITECTURE.md`) without paying distributed-transaction costs now. |
+| Data layer | `pg` + plain SQL migrations (`backend/migrations/001_init.sql`, `002_salary_bands.sql`) | Prisma — first choice, but its engine binaries could not be downloaded in this environment (`binaries.prisma.sh` returned 404, verified with curl). Same schema, same indexes, same repository interface, so only the repository changed. |
+| Salary bands | `salary_bands` table (one row per level, monthly USD min–mid–max), seeded by migration 002 | Bands hard-coded in the seed / a config file — the numbers would live in code, so HR could not change them without a deploy, and the seed and the API could drift apart. The table is the single source: the seed generates from the same values, the API reads the table. |
+| Compa-ratio currency | Fixed FX rates (`shared/analytics.ts`, the same rates the seed used) | Live FX — the assessment already rules out live conversion (non-deterministic, needs an external source). Fixed rates keep the ratio reproducible: a salary generated from a band converts back into that band. See `docs/TRADEOFFS.md`. |
+| Architecture | Modular monolith | Microservices — the brief says it is not looking for the most complex system. One deployable app with four modules and clear walls keeps extraction possible later (the exact path is in `docs/ARCHITECTURE.md`) without paying distributed-transaction costs now. |
 | Charts | Plain tables + CSS bars | Chart library — prettier, heavier; not needed to answer "how does the org pay people?" |
 | Cache | None | Redis — Postgres answers these queries in milliseconds at 10,000 rows; a cache would add stale-data risk for no measured gain. |
 | Auth | None (deliberate, documented) | A weak login bolted on — the brief has one persona (HR Manager); auth is listed as the next step instead of a half-built version. |
@@ -106,10 +110,19 @@ and every number below was measured, not assumed:
   afterwards (10,000 rows, max salary 521,500).
 - **CSV export:** 10,001 lines (header + 10,000 rows), correct header,
   streamed in pages so the whole export is never held in memory.
-- **Tests:** backend 103/103, 99.75% lines / 99.06% branches / 100%
-  functions; frontend 62/62, 100% lines. The gaps below 100% are
+- **Tests:** backend 131/131, 99.79% lines / 99.28% branches / 100%
+  functions; frontend 66/66, 100% lines. The gaps below 100% are
   documented honestly in `docs/TESTING.md` (a defensive fallback and
   a synthetic V8 branch — both proven unreachable, not hidden).
+- **Salary bands (23 Nov 2026):** migration 002 adds `salary_bands`
+  with 6 rows (Junior 1500/2000/2500 … Director 12000/15000/18000);
+  `GET /api/bands` returns all six, `GET /api/bands/Senior` returns
+  4500/6000/7500; a Senior on ₹498,000/mo converts to exactly $6,000
+  → compa-ratio 1.00, within; a Senior on ₹150,000/mo → 0.30, below.
+  Analytics on the 10,000 seed: band summary below 3,005 / within
+  6,995 / above 0 (sums to 10,000; above is 0 because the seed never
+  pays over the band max). `verify-pgmem.ts` still ALL OK and the seed
+  still produces exactly 10,000 employees.
 - **Builds:** `npm run build` clean in both packages; `next build`
   clean (6 routes, First Load JS 90–99 kB).
 - **No `any` types:** `grep` for `any` in `backend/src` +

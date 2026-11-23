@@ -1,8 +1,15 @@
 import { describe, expect, it, beforeEach } from "vitest";
+import { BandService } from "../src/modules/bands/bands.service";
+import { InMemoryBandRepository } from "../src/modules/bands/bands.repository";
 import { InMemoryEmployeeRepository } from "../src/modules/employees/employee.repository";
 import { EmployeeService } from "../src/modules/employees/employee.service";
 import { SalaryService } from "../src/modules/salary/salary.service";
 import { generateEmployees } from "../src/seed/seedData";
+
+/** Band logic over the default in-memory bands (LEVEL_BANDS_USD). */
+function bands() {
+  return new BandService(new InMemoryBandRepository());
+}
 
 function seededRepo() {
   const repo = new InMemoryEmployeeRepository();
@@ -17,7 +24,7 @@ describe("SalaryService", () => {
   let service: SalaryService;
   beforeEach(() => {
     repo = seededRepo();
-    service = new SalaryService(repo);
+    service = new SalaryService(repo, bands());
   });
 
   it("updates the salary and records history with the default changedBy", async () => {
@@ -58,7 +65,10 @@ describe("SalaryService", () => {
       salaryPoints: async () => [],
       allForExport: async () => [],
     };
-    const racing = new SalaryService(vanishing as unknown as import("../src/modules/employees/employee.repository").EmployeeRepository);
+    const racing = new SalaryService(
+      vanishing as unknown as import("../src/modules/employees/employee.repository").EmployeeRepository,
+      bands(),
+    );
     await expect(racing.updateSalary("emp-0", { newSalary: 99999, reason: "Raise" })).rejects.toMatchObject({
       status: 404, message: "Employee not found",
     });
@@ -68,7 +78,7 @@ describe("SalaryService", () => {
 describe("EmployeeService", () => {
   it("create: duplicate email -> 400, other errors rethrown", async () => {
     const repo = seededRepo();
-    const service = new EmployeeService(repo);
+    const service = new EmployeeService(repo, bands());
     const existing = repo.employees[0];
     await expect(service.create({
       firstName: "New", lastName: "Person", email: existing.email, department: "Engineering",
@@ -85,7 +95,10 @@ describe("EmployeeService", () => {
       salaryPoints: async () => [],
       allForExport: async () => [],
     };
-    const service = new EmployeeService(failingRepo as unknown as import("../src/modules/employees/employee.repository").EmployeeRepository);
+    const service = new EmployeeService(
+      failingRepo as unknown as import("../src/modules/employees/employee.repository").EmployeeRepository,
+      bands(),
+    );
     await expect(service.create({
       firstName: "New", lastName: "Person", email: "new@acme.com", department: "Engineering",
       country: "India", currency: "INR", jobTitle: "Engineer", level: "Senior",
@@ -94,7 +107,7 @@ describe("EmployeeService", () => {
   });
   it("getById: 404 for unknown id; list: meta matches repo totals", async () => {
     const repo = seededRepo();
-    const service = new EmployeeService(repo);
+    const service = new EmployeeService(repo, bands());
     await expect(service.getById("missing")).rejects.toMatchObject({ status: 404 });
     const page = await service.list({ page: 1, pageSize: 2, sortBy: "lastName", sortOrder: "asc" });
     expect(page.data).toHaveLength(2);

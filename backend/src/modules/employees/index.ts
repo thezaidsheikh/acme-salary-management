@@ -7,8 +7,10 @@
  */
 export type {
   EmployeeCreateData,
+  EmployeeDetail,
   EmployeeFilters,
   EmployeeRow,
+  EmployeeWithBand,
   EmployeeWithHistory,
   SalaryHistoryRow,
   SalaryPoint,

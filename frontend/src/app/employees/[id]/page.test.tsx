@@ -33,6 +33,10 @@ const employee: Employee & { salaryHistory: SalaryHistory[] } = {
   dateOfJoining: "2022-03-01T00:00:00.000Z",
   employmentStatus: "active",
   baseSalary: 150000,
+  // ₹150,000 / 83 ≈ $1,807 — below the Senior $4,500 minimum.
+  band: { level: "Senior", minSalary: 4500, midSalary: 6000, maxSalary: 7500 },
+  compaRatio: 0.3,
+  bandPosition: "below",
   salaryHistory: [
     {
       id: "h1",
@@ -66,6 +70,49 @@ describe("EmployeeDetail page", () => {
     // History line is split across text nodes — match by regex on the row.
     expect(screen.getByText(/Annual appraisal · hr@acme\.example/)).toBeInTheDocument();
     expect(screen.getByText("Edit salary")).toBeInTheDocument();
+  });
+
+  it("shows the salary band, compa-ratio and position badge", async () => {
+    getMock.mockResolvedValue(employee);
+    render(<EmployeeDetailPage />);
+    await screen.findByText("Priya Sharma");
+    expect(screen.getByText("Salary band — Senior")).toBeInTheDocument();
+    expect(screen.getByText(/Band \(USD \/ month\):/)).toBeInTheDocument();
+    // Band line is split across text nodes — match by regex on the row.
+    expect(screen.getByText(/\$4,500/)).toBeInTheDocument();
+    expect(screen.getByText(/Compa-ratio:/)).toBeInTheDocument();
+    expect(screen.getByText("0.30")).toBeInTheDocument();
+    expect(screen.getByText("Below band")).toBeInTheDocument();
+  });
+
+  it("shows a Within band badge at the midpoint", async () => {
+    getMock.mockResolvedValue({
+      ...employee,
+      country: "USA",
+      currency: "USD",
+      baseSalary: 6000,
+      compaRatio: 1,
+      bandPosition: "within",
+    });
+    render(<EmployeeDetailPage />);
+    await screen.findByText("Priya Sharma");
+    expect(screen.getByText("1.00")).toBeInTheDocument();
+    expect(screen.getByText("Within band")).toBeInTheDocument();
+  });
+
+  it("shows an Above band badge over the maximum", async () => {
+    getMock.mockResolvedValue({
+      ...employee,
+      country: "USA",
+      currency: "USD",
+      baseSalary: 9000,
+      compaRatio: 1.5,
+      bandPosition: "above",
+    });
+    render(<EmployeeDetailPage />);
+    await screen.findByText("Priya Sharma");
+    expect(screen.getByText("1.50")).toBeInTheDocument();
+    expect(screen.getByText("Above band")).toBeInTheDocument();
   });
 
   it("shows the empty-history message when there are no changes", async () => {

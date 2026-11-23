@@ -1,4 +1,5 @@
 import { average, median, toUsd } from "../../shared/analytics.js";
+import type { BandService, BandSummary } from "../bands/index.js";
 import type { EmployeeRepository, SalaryPoint } from "../employees/index.js";
 import type { AnalyticsSummary, TopEarnerInput } from "./analytics.types.js";
 
@@ -48,11 +49,14 @@ const BUCKETS: [string, number, number][] = [
  * their department's median USD salary.
  * @param points One salary point per employee.
  * @param employeesForTop Employees for top-earners/outliers (needs names).
+ * @param bandSummary Below / within / above counts, computed by the
+ *   BandService; defaults to all zeros (no bands configured).
  * @returns The analytics summary.
  */
 export function computeAnalytics(
   points: SalaryPoint[],
   employeesForTop: TopEarnerInput[],
+  bandSummary: BandSummary = { below: 0, within: 0, above: 0 },
 ): AnalyticsSummary {
   const usd = points.map((p) => toUsd(p.baseSalary, p.currency));
   const byCurrency = new Map<string, number[]>();
@@ -87,6 +91,7 @@ export function computeAnalytics(
     byCountry: groupStats(points, "country"),
     byLevel: groupStats(points, "level"),
     distributionUsd,
+    bandSummary,
     topEarners: ranked
       .slice(0, 10)
       .map(({ name, jobTitle, department, country, baseSalary, currency, usd: u }) => ({
@@ -117,13 +122,19 @@ export function computeAnalytics(
 
 /**
  * Analytics business logic: fetch salary points + employees, then run
- * the pure computation. Depends on the repository interface only.
+ * the pure computation. Depends on the repository interface and the band
+ * service only.
  */
 export class AnalyticsService {
   /**
    * @param repo Employee store, injected as the interface.
+   * @param bands Band logic, injected (built from the same pool/repo by
+   *   the module factory when the caller does not pass one).
    */
-  constructor(private repo: EmployeeRepository) {}
+  constructor(
+    private repo: EmployeeRepository,
+    private bands: BandService,
+  ) {}
 
   /**
    * Build the analytics summary for all employees.
@@ -132,6 +143,7 @@ export class AnalyticsService {
   async summary(): Promise<AnalyticsSummary> {
     const points = await this.repo.salaryPoints();
     const all = await this.repo.allForExport({});
-    return computeAnalytics(points, all);
+    const bandSummary = await this.bands.summarize(points);
+    return computeAnalytics(points, all, bandSummary);
   }
 }

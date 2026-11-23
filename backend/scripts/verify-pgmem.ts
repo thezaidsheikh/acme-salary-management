@@ -1,20 +1,22 @@
-// Live-SQL verification without a Postgres server: runs the real migration
+// Live-SQL verification without a Postgres server: runs the real migrations
 // + seed + HTTP smoke test against pg-mem (pg-compatible, in-memory).
 // Usage: npx tsx scripts/verify-pgmem.ts
-import { readFileSync } from "node:fs";
 import { memPool } from "../tests/pgmem.js";
 import { generateEmployees } from "../src/seed/seedData.js";
 import { createApp } from "../src/app.js";
 import { PgEmployeeRepository } from "../src/modules/employees/employee.repository.js";
+import { applyMigrations } from "./migrate.js";
 
 async function main() {
   const started = Date.now();
   // Shared pg-mem setup (tests/pgmem.ts): registers the minimal plpgsql
   // shim the migration's DO blocks need — pg-mem has no plpgsql itself.
   const pool = memPool();
-  const migration = readFileSync(new URL("../migrations/001_init.sql", import.meta.url), "utf8");
-  await pool.query(migration);
-  console.log("migration: ok");
+  const applied = await applyMigrations(pool);
+  console.log(`migrations: ok (${applied.join(", ")})`);
+  const { rows: bandRows } = await pool.query("SELECT COUNT(*)::int AS c FROM salary_bands");
+  console.log(`salary_bands: ${bandRows[0].c} rows`);
+  if (bandRows[0].c !== 6) throw new Error(`band count wrong: ${bandRows[0].c}`);
 
   const employees = generateEmployees(10_000, 42);
   const { randomUUID } = await import("node:crypto");

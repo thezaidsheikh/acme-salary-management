@@ -18,20 +18,38 @@ cd backend && npx tsx scripts/verify-pgmem.ts   # migration + 10k seed + HTTP sm
 
 | Package | Tests | Lines | Branches | Functions | Statements |
 |---|---|---|---|---|---|
-| Backend | 103 passed, 14 files | 99.75% | 99.06% | 100% | 99.75% |
-| Frontend (Next.js) | 62 passed, 9 files | 100% | 100% | 100% | 100% |
+| Backend | 131 passed, 15 files | 99.79% | 99.28% | 100% | 99.79% |
+| Frontend (Next.js) | 66 passed, 9 files | 100% | 100% | 100% | 100% |
 
 Thresholds are enforced at 90% in both `vitest.config.ts` files — the
 run fails if coverage drops below them.
 
 ## What is tested
 
-**Backend (103 tests):**
+**Backend (131 tests):**
 - Validation — every Zod schema error path (bad email/level/date,
   salary ≤ 0, missing/short reason, page 0, pageSize > 100, bad sort).
 - Analytics maths — median (odd/even/empty/single), average, `toUsd`
   (including unknown currency), distribution buckets, outliers
   (none/some), top earners with fewer than 10 employees.
+- Salary bands — `classifySalary` (below/within/above, exact min/max
+  edges included, exact midpoint → 1.00, rounding to 2 decimals);
+  `BandService` over the in-memory repo (FX conversion before
+  classifying, unknown level → null, batch enrich, summary counts);
+  `PgBandRepository` over pg-mem with the real migrations (six seeded
+  bands, `getByLevel` for a known and an unknown level); the bands API
+  (`GET /api/bands`, `GET /api/bands/:level`, 404 for an unknown
+  level); band fields on employee detail/list/create/PATCH responses
+  (checked against an independent computation from the seed data);
+  `bandSummary` in the analytics summary (sums to the employee count);
+  fail-fast 500 when a level has no band (unmigrated DB).
+- Migrations — `applyMigrations` applies 001 then 002 in order and
+  seeds the six bands with the exact values; re-running 002's seed
+  insert adds no duplicates (`ON CONFLICT DO NOTHING`); 002's guards
+  (`IF NOT EXISTS`, `ON CONFLICT`) asserted from the file text.
+  (Re-applying a whole `CREATE TABLE` in pg-mem is a known pg-mem
+  limitation — see `migrate-idempotent.test.ts` — not a problem in
+  the SQL; on real Postgres the whole set re-runs.)
 - Seed determinism — same seed → same employees; 10,000 rows, 10,000
   unique emails; salaries in band.
 - Seed idempotency — seeds on an empty DB, skips when already seeded
@@ -59,19 +77,23 @@ run fails if coverage drops below them.
   gets no Allow-Origin header; a custom `FRONTEND_URL` list (commas,
   trailing slashes stripped) is honoured alongside the defaults.
 
-**Frontend (62 tests):**
+**Frontend (66 tests):**
 - Utils — `formatMoney`/`formatDate` (including unknown-currency
   fallback), constants.
 - Components — `StatCard`, `BarList` (rows, widths, empty list).
 - API client — all endpoints, error-envelope handling, export URL.
-- Pages (mocked API) — Dashboard loading/error/loaded; Employees
-  loading/empty/error, filters, sort, pagination buttons; EmployeeDetail
-  loading/error, every salary-form validation error, success path;
-  AddEmployee validation errors and success navigation.
+- Pages (mocked API) — Dashboard loading/error/loaded, including the
+  salary-band position counts; Employees loading/empty/error, filters,
+  sort, pagination buttons; EmployeeDetail loading/error, every
+  salary-form validation error, success path, and the salary-band card
+  for all three positions (Below / Within / Above badge); AddEmployee
+  validation errors and success navigation.
 
 ## Gaps — exactly what is below 100% and why
 
-**Backend (99.75% lines):**
+**Backend (99.79% lines):**
+- `src/modules/bands/` is 100% across the board (the factory's
+  BandRepository passthrough branch is covered by a dedicated test).
 - `src/seed/employeeFactory.ts` 96.82% lines / 91.66% branches —
   lines 45–46, the `pickWeighted` fallback `return weights.length - 1`:
   genuinely unreachable. `LEVEL_WEIGHTS` sums to exactly 1.0 and
