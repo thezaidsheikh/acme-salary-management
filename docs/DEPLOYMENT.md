@@ -1,13 +1,13 @@
 # Deployment runbook (Phase 2)
 
 Status: **backend LIVE** at `https://acme-salary-api-droy.onrender.com`
-(`GET /api/health` → `{"data":{"status":"ok"}}`, verified 23 Nov 2026).
-**Seed NOT yet run** — the live database holds 0 employees. The free
-workaround is built (`src/shared/seedOnStart.ts`): set
-`SEED_ON_START=true` on the Render service and it seeds itself on
-boot — see step 2. **Frontend not yet deployed** (Vercel URL TBD).
-Nothing is claimed as done until the smoke checks in step 5 pass on
-the live URLs.
+(`GET /api/health` → `{"data":{"status":"ok"}}`) and **frontend LIVE**
+at `https://acme-salary-management-kappa.vercel.app` (both verified
+24 Nov 2026). Live DB seeded via `SEED_ON_START=true`: 10,000
+employees, migration 002 applied, `FRONTEND_URL` on Render set to the
+Vercel URL. Live smoke checks in step 5 pass (headcount 10,000,
+"Priya" = 132, bands below 3,005 / within 6,995 / above 0). Video demo
+still pending.
 
 Target (from `docs/ARCHITECTURE.md`): backend + Postgres on **Render**,
 frontend on **Vercel**. All config for the backend side is in
