@@ -176,8 +176,8 @@ in `docs/DEPLOYMENT.md` step 2.
 ## Out of scope (deliberate)
 
 Payroll/tax, auth/RBAC, leave/attendance, live FX conversion, AI chatbot
-— reasons in `docs/REQUIREMENTS.md`. Deployment + video demo are phase 2:
-backend is live at `https://acme-salary-api-droy.onrender.com`
-(health verified); the live seed is still pending — the boot-time
-auto-seed is built, set `SEED_ON_START=true` on Render (see
-`docs/DEPLOYMENT.md` step 2); frontend and video demo are still pending.
+— reasons in `docs/REQUIREMENTS.md`. Deployment is done: backend is live at `https://acme-salary-api-droy.onrender.com`
+(health verified, live DB seeded with 10,000 employees), frontend is live at
+`https://acme-salary-management-kappa.vercel.app`, and the video demo is recorded
+— `video/acme-salary-demo.mp4` (72 seconds, walkthrough of the live app).
+See `docs/DEPLOYMENT.md` for the full setup.
